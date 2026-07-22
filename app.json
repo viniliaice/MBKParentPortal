@@ -7,21 +7,22 @@
     "scheme": "mobile",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
-    "icon": "./assets/icon.png",
+    "icon": "./assets/logo.png",
     "ios": {
       "supportsTablet": false
     },
     "android": {
       "package": "com.abdurahmankamal.MBKParentPortal",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/android-icon-foreground.png",
+        "foregroundImage": "./assets/logo.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png",
         "backgroundColor": "#000000"
       }
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/logo.png"
     },
     "plugins": [
       "expo-router",
@@ -32,14 +33,15 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#000000",
-          "image": "./assets/splash-icon.png",
+          "image": "./assets/logo.png",
           "imageWidth": 200,
           "dark": {
-            "image": "./assets/splash-icon.png",
+            "image": "./assets/logo.png",
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      "expo-sqlite"
     ],
     "experiments": {
       "typedRoutes": true
