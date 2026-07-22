@@ -7,11 +7,18 @@
     "scheme": "mobile",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
-"ios": {
+    "icon": "./assets/icon.png",
+    "ios": {
       "supportsTablet": false
     },
     "android": {
-      "package": "com.abdurahmankamal.MBKParentPortal"
+      "package": "com.abdurahmankamal.MBKParentPortal",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png",
+        "backgroundColor": "#000000"
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -20,7 +27,19 @@
       "expo-router",
       "expo-font",
       "expo-notifications",
-      "expo-dev-client"
+      "expo-dev-client",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#000000",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "dark": {
+            "image": "./assets/splash-icon.png",
+            "backgroundColor": "#000000"
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
