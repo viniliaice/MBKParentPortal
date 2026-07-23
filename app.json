@@ -20,17 +20,7 @@
       "expo-router",
       "expo-font",
       "expo-notifications",
-      "expo-dev-client",
-      [
-        "expo-splash-screen",
-        {
-          "image": "./assets/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#171717"
-        }
-      ],
-      "./withCmakePathMax"
+      "expo-dev-client"
     ],
     "experiments": {
       "typedRoutes": true
