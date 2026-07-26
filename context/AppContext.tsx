@@ -1,11 +1,23 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase, type SupabaseStudent, type SupabaseExam, type SupabaseAnnouncement, type SupabaseMessage } from '@/lib/supabase';
+import { supabase, type SupabaseStudent, type SupabaseExam, type SupabaseAnnouncement, type SupabaseMessage, type SupabaseLessonProgress, type SupabaseGamification } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import type { HomeworkItem, AttendanceRecord, AppMessage } from '@/data/mockData';
 
 const PROGRESS_KEY = '@mbk_learning_progress';
 const GAMIFICATION_KEY = '@mbk_gamification';
+
+const DEFAULT_GAMIFICATION: GamificationState = {
+  currentStreak: 0, longestStreak: 0, lastLessonDate: null,
+  level: 1, totalXPEarned: 0, dailyRewardClaimed: false, dailyRewardDate: null,
+};
+
+function localDateStr(d = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 interface GamificationState {
   currentStreak: number;
@@ -34,9 +46,10 @@ interface LessonProgress {
   activityResults?: ActivityResult[];
 }
 
-export function computeMastery(lessonProgress: Record<string, LessonProgress>): Record<string, { correct: number; total: number; pct: number }> {
+export function computeMastery(lessonProgress: Record<string, LessonProgress>, subjectLessonIds?: Set<string>): Record<string, { correct: number; total: number; pct: number }> {
   const mastery: Record<string, { correct: number; total: number; pct: number }> = {};
   for (const lp of Object.values(lessonProgress)) {
+    if (subjectLessonIds && !subjectLessonIds.has(lp.lessonId)) continue;
     if (!lp.activityResults) continue;
     for (const ar of lp.activityResults) {
       if (!mastery[ar.type]) mastery[ar.type] = { correct: 0, total: 0, pct: 0 };
@@ -232,13 +245,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [rawAttendance, setRawAttendance] = useState<AttendanceRecord[]>([]);
   const [announcements, setAnnouncements] = useState<AnnouncementData[]>([]);
   const [messages, setMessages] = useState<AppMessage[]>([]);
-  const [homework] = useState<HomeworkItem[]>([]);
+  const [homework, setHomework] = useState<HomeworkItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [lessonProgress, setLessonProgress] = useState<Record<string, LessonProgress>>({});
-  const [gamification, setGamification] = useState<GamificationState>({
-    currentStreak: 0, longestStreak: 0, lastLessonDate: null,
-    level: 1, totalXPEarned: 0, dailyRewardClaimed: false, dailyRewardDate: null,
-  });
+  const [gamification, setGamification] = useState<GamificationState>(DEFAULT_GAMIFICATION);
+  const [gamRespExists, setGamRespExists] = useState(false);
 
   const attendanceMap = useMemo(() => {
     const map = new Map<string, Map<string, { present: number; total: number }>>();
@@ -262,23 +273,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [rawExams, attendanceMap]);
 
   useEffect(() => {
-    (async () => {
-      const [progVal, gamVal] = await Promise.all([
-        AsyncStorage.getItem(PROGRESS_KEY),
-        AsyncStorage.getItem(GAMIFICATION_KEY),
-      ]);
-      if (progVal) setLessonProgress(JSON.parse(progVal));
-      if (gamVal) setGamification(prev => ({ ...prev, ...JSON.parse(gamVal) }));
-    })();
-  }, []);
-
-  useEffect(() => {
     if (!user) { setLoading(false); return; }
 
     (async () => {
-      const { data: studentData, error: studentErr } = await supabase.from('students').select('*').eq('parentId', user.id);
-      if (studentErr || !studentData) { setLoading(false); return; }
-      const mapped = (studentData as SupabaseStudent[]).map((s, i) => ({
+      const [studentResp, progResp, gamResp] = await Promise.all([
+        supabase.from('students').select('*').eq('parentId', user.id),
+        supabase.from('lesson_progress').select('*').eq('parent_id', user.id),
+        supabase.from('gamification').select('*').eq('parent_id', user.id).maybeSingle(),
+      ]);
+
+      if (studentResp.error || !studentResp.data) { setLoading(false); return; }
+      const mapped = (studentResp.data as SupabaseStudent[]).map((s, i) => ({
         id: s.id,
         name: s.name,
         className: s.className,
@@ -287,14 +292,45 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }));
       setStudents(mapped);
 
+      if (progResp.data) {
+        const progressMap: Record<string, LessonProgress> = {};
+        for (const row of progResp.data as SupabaseLessonProgress[]) {
+          progressMap[row.lesson_id] = {
+            lessonId: row.lesson_id,
+            completed: row.completed,
+            xpEarned: row.xp_earned,
+            correctCount: row.correct_count,
+            totalActivities: row.total_activities,
+            completedAt: row.completed_at || undefined,
+            activityResults: row.activity_results || [],
+          };
+        }
+        setLessonProgress(progressMap);
+      }
+
+      if (gamResp.data) {
+        const g = gamResp.data as SupabaseGamification;
+        setGamification({
+          currentStreak: g.current_streak,
+          longestStreak: g.longest_streak,
+          lastLessonDate: g.last_lesson_date,
+          level: g.level,
+          totalXPEarned: g.total_xp_earned,
+          dailyRewardClaimed: g.daily_reward_claimed,
+          dailyRewardDate: g.daily_reward_date,
+        });
+        setGamRespExists(true);
+      }
+
       const studentIds = mapped.map(s => s.id);
       if (studentIds.length > 0) {
-        const [examResult, attResult, inboxResult, sentResult, annResult] = await Promise.all([
+        const [examResult, attResult, inboxResult, sentResult, annResult, hwResult] = await Promise.all([
           supabase.from('exams').select('*').in('studentId', studentIds),
           supabase.from('attendance').select('*').in('studentId', studentIds),
           supabase.from('messages').select('*').eq('recipientId', user.id),
           supabase.from('messages').select('*').eq('senderId', user.id),
           supabase.from('announcements').select('*'),
+          supabase.from('homework').select('*').in('studentId', studentIds),
         ]);
 
         if (examResult.data) {
@@ -307,6 +343,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             date: a.date,
             status: a.status as 'present' | 'absent' | 'late',
             note: a.note || '',
+          })));
+        }
+        if (hwResult.data) {
+          setHomework((hwResult.data as any[]).map(h => ({
+            id: h.id,
+            studentId: h.studentId,
+            subject: h.subject,
+            title: h.title,
+            dueDate: h.dueDate,
+            status: h.status as 'pending' | 'submitted' | 'graded',
+            description: h.description || '',
           })));
         }
 
@@ -368,38 +415,78 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  const saveLessonProgress = async (p: LessonProgress) => {
+  const saveLessonProgress = (p: LessonProgress) => {
+    const prev = lessonProgress[p.lessonId];
+    const wasCompleted = prev?.completed;
     const updated = { ...lessonProgress, [p.lessonId]: p };
     setLessonProgress(updated);
-    await AsyncStorage.setItem(PROGRESS_KEY, JSON.stringify(updated));
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = localDateStr();
     const newGam = { ...gamification };
-    newGam.totalXPEarned += p.xpEarned;
 
-    if (gamification.lastLessonDate !== today) {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yStr = yesterday.toISOString().split('T')[0];
-      if (gamification.lastLessonDate === yStr) {
-        newGam.currentStreak += 1;
-      } else {
-        newGam.currentStreak = 1;
+    if (p.completed && !wasCompleted) {
+      newGam.totalXPEarned += p.xpEarned;
+
+      if (gamification.lastLessonDate !== today) {
+        const y = new Date(); y.setDate(y.getDate() - 1);
+        const yStr = localDateStr(y);
+        if (gamification.lastLessonDate === yStr) {
+          newGam.currentStreak += 1;
+        } else {
+          newGam.currentStreak = 1;
+        }
+        newGam.longestStreak = Math.max(newGam.longestStreak, newGam.currentStreak);
+        newGam.lastLessonDate = today;
+        newGam.dailyRewardClaimed = false;
       }
-      newGam.longestStreak = Math.max(newGam.longestStreak, newGam.currentStreak);
-      newGam.lastLessonDate = today;
-      newGam.dailyRewardClaimed = false;
+
+      if (!newGam.dailyRewardClaimed) {
+        newGam.dailyRewardClaimed = true;
+        newGam.dailyRewardDate = today;
+        newGam.totalXPEarned += 10;
+      }
+
+      newGam.level = Math.floor(newGam.totalXPEarned / 200) + 1;
     }
 
-    if (!newGam.dailyRewardClaimed) {
-      newGam.dailyRewardClaimed = true;
-      newGam.dailyRewardDate = today;
-      newGam.totalXPEarned += 10;
-    }
-
-    newGam.level = Math.floor(newGam.totalXPEarned / 200) + 1;
     setGamification(newGam);
-    await AsyncStorage.setItem(GAMIFICATION_KEY, JSON.stringify(newGam));
+
+    (async () => {
+      await supabase.from('lesson_progress').upsert({
+        parent_id: user!.id,
+        lesson_id: p.lessonId,
+        completed: p.completed,
+        xp_earned: p.xpEarned,
+        correct_count: p.correctCount,
+        total_activities: p.totalActivities,
+        completed_at: p.completedAt || null,
+        activity_results: p.activityResults || null,
+      }, { onConflict: 'parent_id,lesson_id' });
+
+      if (!gamRespExists) {
+        await supabase.from('gamification').insert({
+          parent_id: user!.id,
+          current_streak: newGam.currentStreak,
+          longest_streak: newGam.longestStreak,
+          last_lesson_date: newGam.lastLessonDate,
+          level: newGam.level,
+          total_xp_earned: newGam.totalXPEarned,
+          daily_reward_claimed: newGam.dailyRewardClaimed,
+          daily_reward_date: newGam.dailyRewardDate,
+        });
+        setGamRespExists(true);
+      } else {
+        await supabase.from('gamification').update({
+          current_streak: newGam.currentStreak,
+          longest_streak: newGam.longestStreak,
+          last_lesson_date: newGam.lastLessonDate,
+          level: newGam.level,
+          total_xp_earned: newGam.totalXPEarned,
+          daily_reward_claimed: newGam.dailyRewardClaimed,
+          daily_reward_date: newGam.dailyRewardDate,
+        }).eq('parent_id', user!.id);
+      }
+    })();
   };
 
   const getTotalXP = () => {

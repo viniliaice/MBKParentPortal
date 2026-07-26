@@ -18,7 +18,7 @@ function useSpringAnim(delay = 0): Animated.Value {
   return val;
 }
 
-function AnimatedDot({ index, color, total }: { index: number; color: string; total: number }) {
+function AnimatedDot({ index, color }: { index: number; color: string }) {
   const anim = useSpringAnim(index * 300);
   const numAnim = useSpringAnim(index * 300 + 150);
   const [showNum, setShowNum] = useState(false);
@@ -43,7 +43,7 @@ function CountingAnimation({ color }: { color: string }) {
       <Text style={styles.animTitle}>Let's Count!</Text>
       <View style={styles.dotsRow}>
         {Array.from({ length: count }, (_, i) => (
-          <AnimatedDot key={i} index={i} color={color} total={count} />
+          <AnimatedDot key={i} index={i} color={color} />
         ))}
       </View>
       <Text style={styles.animHint}>Tap each item and say the number</Text>
@@ -79,68 +79,81 @@ function AdditionAnimation({ color }: { color: string }) {
   );
 }
 
-function SubtractionAnimation({ color }: { color: string }) {
-  const items = useRef([...Array(5)].map(() => new Animated.Value(0))).current;
+function SubCookie({ index, takenAway }: { index: number; takenAway: boolean }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.stagger(400, items.slice(0, 3).map((v, i) =>
-      Animated.parallel([
-        Animated.timing(v, { toValue: 1, duration: 300, useNativeDriver: true }),
-        Animated.sequence([
-          Animated.delay(800),
-          Animated.parallel([
-            Animated.timing(v, { toValue: 0, duration: 400, useNativeDriver: true }),
-            Animated.timing(v, { toValue: -60, duration: 400, useNativeDriver: true }),
-          ]),
+    Animated.timing(opacity, { toValue: 1, duration: 300, delay: index * 200, useNativeDriver: true }).start();
+    if (takenAway) {
+      Animated.sequence([
+        Animated.delay(index * 200 + 1000),
+        Animated.parallel([
+          Animated.timing(opacity, { toValue: 0, duration: 500, useNativeDriver: true }),
+          Animated.timing(translateY, { toValue: 60, duration: 500, useNativeDriver: true }),
         ]),
-      ])
-    )).start();
+      ]).start();
+    }
   }, []);
+  return (
+    <Animated.View style={{ opacity, transform: [{ translateY }] }}>
+      <Text style={styles.addEmoji}>🍪</Text>
+    </Animated.View>
+  );
+}
 
-  const remaining = items.slice(3);
-
+function SubtractionAnimation({ color }: { color: string }) {
+  const total = 5;
+  const takenAwayCount = 3;
   return (
     <View style={styles.animContainer}>
       <Text style={styles.animTitle}>Subtraction = Taking Away</Text>
       <View style={styles.subRow}>
-        {items.map((anim, i) => {
-          const isRemaining = i >= 3;
-          return (
-            <Animated.View key={i} style={{ opacity: isRemaining ? 1 : anim, transform: [{ translateY: isRemaining ? new Animated.Value(0) : anim.interpolate({ inputRange: [0, 1], outputRange: [0, -60] }) }] }}>
-              <Text style={styles.addEmoji}>🍪</Text>
-            </Animated.View>
-          );
-        })}
+        {Array.from({ length: total }, (_, i) => (
+          <SubCookie key={i} index={i} takenAway={i < takenAwayCount} />
+        ))}
       </View>
       <Text style={styles.animHint}>3 cookies taken away — 2 remain!</Text>
     </View>
   );
 }
 
+function ShapeCardItem({ shape, index, color }: { shape: { name: string; sides: string; icon: string }; index: number; color: string }) {
+  const anim = useSpringAnim(index * 400);
+  const labelAnim = useSpringAnim(index * 400 + 250);
+  return (
+    <Animated.View style={[styles.shapeCard, { borderColor: `${color}44` }, { opacity: anim, transform: [{ scale: anim }, { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }] }]}>
+      <Text style={[styles.shapeIcon, { color }]}>{shape.icon}</Text>
+      <Animated.Text style={[styles.shapeLabel, { opacity: labelAnim }]}>{shape.name}</Animated.Text>
+      <Animated.Text style={[styles.shapeSides, { color, opacity: labelAnim }]}>{shape.sides} sides</Animated.Text>
+    </Animated.View>
+  );
+}
+
 function ShapesAnimation({ color }: { color: string }) {
   const shapes = [
-    { name: 'Circle', sides: '0', icon: '●', size: 14 },
-    { name: 'Triangle', sides: '3', icon: '▲', size: 16 },
-    { name: 'Square', sides: '4', icon: '■', size: 14 },
+    { name: 'Circle', sides: '0', icon: '●' },
+    { name: 'Triangle', sides: '3', icon: '▲' },
+    { name: 'Square', sides: '4', icon: '■' },
   ];
-
   return (
     <View style={styles.animContainer}>
       <Text style={styles.animTitle}>Meet the Shapes!</Text>
       <View style={styles.shapesRow}>
-        {shapes.map((s, i) => {
-          const anim = useSpringAnim(i * 400);
-          const labelAnim = useSpringAnim(i * 400 + 250);
-          return (
-            <Animated.View key={s.name} style={[styles.shapeCard, { borderColor: `${color}44` }, { opacity: anim, transform: [{ scale: anim }, { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }] }]}>
-              <Text style={[styles.shapeIcon, { color }]}>{s.icon}</Text>
-              <Animated.Text style={[styles.shapeLabel, { opacity: labelAnim }]}>{s.name}</Animated.Text>
-              <Animated.Text style={[styles.shapeSides, { color, opacity: labelAnim }]}>{s.sides} sides</Animated.Text>
-            </Animated.View>
-          );
-        })}
+        {shapes.map((s, i) => (
+          <ShapeCardItem key={s.name} shape={s} index={i} color={color} />
+        ))}
       </View>
       <Text style={styles.animHint}>Every shape has a name and a number of sides</Text>
     </View>
+  );
+}
+
+function LetterItem({ letter, index, color }: { letter: string; index: number; color: string }) {
+  const anim = useSpringAnim(index * 250);
+  return (
+    <Animated.View style={[styles.letterBox, { borderColor: `${color}44`, backgroundColor: `${color}18` }, { opacity: anim, transform: [{ scale: anim }, { rotate: anim.interpolate({ inputRange: [0, 1], outputRange: ['-30deg', '0deg'] }) }] }]}>
+      <Text style={[styles.letterText, { color }]}>{letter}</Text>
+    </Animated.View>
   );
 }
 
@@ -150,17 +163,25 @@ function AlphabetAnimation({ color }: { color: string }) {
     <View style={styles.animContainer}>
       <Text style={styles.animTitle}>The Alphabet</Text>
       <View style={styles.abcRow}>
-        {letters.map((l, i) => {
-          const anim = useSpringAnim(i * 250);
-          return (
-            <Animated.View key={l} style={[styles.letterBox, { borderColor: `${color}44`, backgroundColor: `${color}18` }, { opacity: anim, transform: [{ scale: anim }, { rotate: anim.interpolate({ inputRange: [0, 1], outputRange: ['-30deg', '0deg'] }) }] }]}>
-              <Text style={[styles.letterText, { color }]}>{l}</Text>
-            </Animated.View>
-          );
-        })}
+        {letters.map((l, i) => (
+          <LetterItem key={l} letter={l} index={i} color={color} />
+        ))}
       </View>
       <Text style={styles.animHint}>Letters come in order — A, B, C, D, E, F!</Text>
     </View>
+  );
+}
+
+function PhonicsItem({ pair, index, color }: { pair: { letter: string; word: string; emoji: string }; index: number; color: string }) {
+  const anim = useSpringAnim(index * 500);
+  const revealAnim = useSpringAnim(index * 500 + 300);
+  return (
+    <Animated.View style={[styles.phonicsCard, { borderColor: `${color}33` }, { opacity: anim, transform: [{ scale: anim }, { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }]}>
+      <Text style={[styles.phonicsLetter, { color }]}>{pair.letter}</Text>
+      <Animated.Text style={[styles.phonicsEmoji, { opacity: revealAnim, transform: [{ scale: revealAnim }] }]}>{pair.emoji}</Animated.Text>
+      <Animated.Text style={[styles.phonicsWord, { opacity: revealAnim }]}>{pair.word}</Animated.Text>
+      <Animated.Text style={[styles.phonicsSound, { color, opacity: revealAnim }]}>/{pair.letter.toLowerCase()}/</Animated.Text>
+    </Animated.View>
   );
 }
 
@@ -170,25 +191,31 @@ function PhonicsAnimation({ color }: { color: string }) {
     { letter: 'B', word: 'Ball', emoji: '⚽' },
     { letter: 'C', word: 'Cat', emoji: '🐱' },
   ];
-
   return (
     <View style={styles.animContainer}>
       <Text style={styles.animTitle}>Letter Sounds</Text>
       <View style={styles.phonicsRow}>
-        {pairs.map((p, i) => {
-          const anim = useSpringAnim(i * 500);
-          const revealAnim = useSpringAnim(i * 500 + 300);
-          return (
-            <Animated.View key={p.letter} style={[styles.phonicsCard, { borderColor: `${color}33` }, { opacity: anim, transform: [{ scale: anim }, { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }]}>
-              <Text style={[styles.phonicsLetter, { color }]}>{p.letter}</Text>
-              <Animated.Text style={[styles.phonicsEmoji, { opacity: revealAnim, transform: [{ scale: revealAnim }] }]}>{p.emoji}</Animated.Text>
-              <Animated.Text style={[styles.phonicsWord, { opacity: revealAnim }]}>{p.word}</Animated.Text>
-              <Animated.Text style={[styles.phonicsSound, { color, opacity: revealAnim }]}>/p.letter.toLowerCase()/</Animated.Text>
-            </Animated.View>
-          );
-        })}
+        {pairs.map((p, i) => (
+          <PhonicsItem key={p.letter} pair={p} index={i} color={color} />
+        ))}
       </View>
       <Text style={styles.animHint}>Every letter makes a sound — listen and learn!</Text>
+    </View>
+  );
+}
+
+function VocabPairItem({ pair, index, color }: { pair: { left: string; right: string }; index: number; color: string }) {
+  const leftAnim = useSpringAnim(index * 350);
+  const rightAnim = useSpringAnim(index * 350 + 200);
+  return (
+    <View style={styles.vocabRow}>
+      <Animated.View style={[styles.vocabCard, { borderColor: `${color}44` }, { opacity: leftAnim, transform: [{ scale: leftAnim }, { translateX: leftAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }]}>
+        <Text style={styles.vocabText}>{pair.left}</Text>
+      </Animated.View>
+      <Animated.Text style={[styles.vocabVs, { opacity: rightAnim }]}>vs</Animated.Text>
+      <Animated.View style={[styles.vocabCard, { borderColor: '#FF537044' }, { opacity: rightAnim, transform: [{ scale: rightAnim }, { translateX: rightAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }]}>
+        <Text style={styles.vocabText}>{pair.right}</Text>
+      </Animated.View>
     </View>
   );
 }
@@ -199,29 +226,29 @@ function VocabularyAnimation({ color }: { color: string }) {
     { left: 'Big 🐘', right: 'Small 🐭' },
     { left: 'Happy 😊', right: 'Sad 😢' },
   ];
-
   return (
     <View style={styles.animContainer}>
       <Text style={styles.animTitle}>Opposites</Text>
       <View style={styles.vocabCol}>
-        {pairs.map((p, i) => {
-          const leftAnim = useSpringAnim(i * 350);
-          const rightAnim = useSpringAnim(i * 350 + 200);
-          return (
-            <View key={i} style={styles.vocabRow}>
-              <Animated.View style={[styles.vocabCard, { borderColor: `${color}44` }, { opacity: leftAnim, transform: [{ scale: leftAnim }, { translateX: leftAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }]}>
-                <Text style={styles.vocabText}>{p.left}</Text>
-              </Animated.View>
-              <Animated.Text style={[styles.vocabVs, { opacity: rightAnim }]}>vs</Animated.Text>
-              <Animated.View style={[styles.vocabCard, { borderColor: '#FF537044' }, { opacity: rightAnim, transform: [{ scale: rightAnim }, { translateX: rightAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }]}>
-                <Text style={styles.vocabText}>{p.right}</Text>
-              </Animated.View>
-            </View>
-          );
-        })}
+        {pairs.map((p, i) => (
+          <VocabPairItem key={i} pair={p} index={i} color={color} />
+        ))}
       </View>
       <Text style={styles.animHint}>Opposites are words with opposite meanings!</Text>
     </View>
+  );
+}
+
+function GrammarWordItem({ word, index, color }: { word: { text: string; type: string }; index: number; color: string }) {
+  const anim = useSpringAnim(index * 400);
+  const labelAnim = useSpringAnim(index * 400 + 250);
+  return (
+    <Animated.View style={{ alignItems: 'center', gap: 4, opacity: anim, transform: [{ scale: anim }, { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }] }}>
+      <View style={[styles.grammarWord, { borderColor: `${color}44`, backgroundColor: `${color}15` }]}>
+        <Text style={[styles.grammarText, { color }]}>{word.text}</Text>
+      </View>
+      <Animated.Text style={[styles.grammarType, { opacity: labelAnim }]}>{word.type}</Animated.Text>
+    </Animated.View>
   );
 }
 
@@ -231,78 +258,51 @@ function GrammarAnimation({ color }: { color: string }) {
     { text: 'cat', type: 'noun' },
     { text: 'sleeps', type: 'verb' },
   ];
-
   return (
     <View style={styles.animContainer}>
       <Text style={styles.animTitle}>Building Sentences</Text>
       <View style={styles.grammarRow}>
-        {words.map((w, i) => {
-          const anim = useSpringAnim(i * 400);
-          const labelAnim = useSpringAnim(i * 400 + 250);
-          return (
-            <Animated.View key={i} style={{ alignItems: 'center', gap: 4, opacity: anim, transform: [{ scale: anim }, { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }] }}>
-              <View style={[styles.grammarWord, { borderColor: `${color}44`, backgroundColor: `${color}15` }]}>
-                <Text style={[styles.grammarText, { color }]}>{w.text}</Text>
-              </View>
-              <Animated.Text style={[styles.grammarType, { opacity: labelAnim }]}>{w.type}</Animated.Text>
-            </Animated.View>
-          );
-        })}
+        {words.map((w, i) => (
+          <GrammarWordItem key={i} word={w} index={i} color={color} />
+        ))}
       </View>
       <Text style={styles.animHint}>Every sentence needs a noun and a verb!</Text>
     </View>
   );
 }
 
-function TrueFalseAnimation({ color }: { color: string }) {
-  const trueAnim = useSpringAnim(300);
-  const falseAnim = useSpringAnim(900);
-  const checkAnim = useSpringAnim(1500);
+const ANIM_DELAYS: Record<string, number> = {
+  counting: 2000, addition: 2800, subtraction: 2800,
+  shapes: 2500, alphabet: 2500, phonics: 2500,
+  vocabulary: 2500, grammar: 2500,
+};
 
-  return (
-    <View style={styles.animContainer}>
-      <Text style={styles.animTitle}>True or False?</Text>
-      <View style={styles.tfAnimRow}>
-        <Animated.View style={[styles.tfAnimCard, { borderColor: '#2ECC7166', backgroundColor: 'rgba(46,204,113,0.1)' }, { opacity: trueAnim, transform: [{ scale: trueAnim }] }]}>
-          <Ionicons name="checkmark-circle" size={28} color="#2ECC71" />
-          <Text style={[styles.tfAnimText, { color: '#2ECC71' }]}>TRUE</Text>
-        </Animated.View>
-        <Animated.Text style={[styles.tfAnimVs, { opacity: checkAnim }]}>or</Animated.Text>
-        <Animated.View style={[styles.tfAnimCard, { borderColor: '#FF537066', backgroundColor: 'rgba(255,83,112,0.1)' }, { opacity: falseAnim, transform: [{ scale: falseAnim }] }]}>
-          <Ionicons name="close-circle" size={28} color="#FF5370" />
-          <Text style={[styles.tfAnimText, { color: '#FF5370' }]}>FALSE</Text>
-        </Animated.View>
-      </View>
-      <Text style={styles.animHint}>Read the statement — is it true or false?</Text>
-    </View>
-  );
+function getAnimation(topicId: string, color: string) {
+  switch (topicId) {
+    case 'counting': return <CountingAnimation color={color} />;
+    case 'addition': return <AdditionAnimation color={color} />;
+    case 'subtraction': return <SubtractionAnimation color={color} />;
+    case 'shapes': return <ShapesAnimation color={color} />;
+    case 'alphabet': return <AlphabetAnimation color={color} />;
+    case 'phonics': return <PhonicsAnimation color={color} />;
+    case 'vocabulary': return <VocabularyAnimation color={color} />;
+    case 'grammar': return <GrammarAnimation color={color} />;
+    default: return <CountingAnimation color={color} />;
+  }
 }
 
-function WritingAnimation({ color }: { color: string }) {
-  const examples = [
-    { word: 'Blue', desc: 'colour of the sky' },
-    { word: 'Happy', desc: 'feeling good' },
-    { word: 'Fast', desc: 'quick speed' },
-  ];
-
-  return (
-    <View style={styles.animContainer}>
-      <Text style={styles.animTitle}>Spelling Practice</Text>
-      <View style={styles.writingCol}>
-        {examples.map((ex, i) => {
-          const wordAnim = useSpringAnim(i * 500);
-          const descAnim = useSpringAnim(i * 500 + 250);
-          return (
-            <Animated.View key={i} style={[styles.writingCard, { borderColor: `${color}33` }, { opacity: wordAnim, transform: [{ scale: wordAnim }, { translateX: wordAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }]}>
-              <Text style={[styles.writingWord, { color }]}>{ex.word}</Text>
-              <Animated.Text style={[styles.writingDesc, { opacity: descAnim }]}>— {ex.desc}</Animated.Text>
-            </Animated.View>
-          );
-        })}
-      </View>
-      <Text style={styles.animHint}>Pick the correct spelling for each word</Text>
-    </View>
-  );
+function getTagline(topicId: string) {
+  switch (topicId) {
+    case 'counting': return 'Master counting!';
+    case 'addition': return 'Master addition!';
+    case 'subtraction': return 'Master subtraction!';
+    case 'shapes': return 'Master shapes!';
+    case 'alphabet': return 'Master the alphabet!';
+    case 'phonics': return 'Master letter sounds!';
+    case 'vocabulary': return 'Master vocabulary!';
+    case 'grammar': return 'Master grammar!';
+    default: return 'Ready to learn?';
+  }
 }
 
 export default function ConceptAnimation({ topicId, topicColor, onComplete }: Props) {
@@ -310,54 +310,21 @@ export default function ConceptAnimation({ topicId, topicColor, onComplete }: Pr
   const btnAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    const delay = ANIM_DELAYS[topicId] ?? 2500;
     const t = setTimeout(() => {
       setShowBtn(true);
       Animated.spring(btnAnim, { toValue: 1, friction: 6, tension: 80, useNativeDriver: true }).start();
-    }, topicId.startsWith('cnt') ? 2000 : topicId.startsWith('add') ? 2800 : topicId.startsWith('sub') ? 2800 : 2500);
+    }, delay);
     return () => clearTimeout(t);
-  }, []);
-
-  const prefix = topicId?.split('_')[0] || 'cnt';
-
-  const content = () => {
-    switch (prefix) {
-      case 'cnt': return <CountingAnimation color={topicColor} />;
-      case 'add': return <AdditionAnimation color={topicColor} />;
-      case 'sub': return <SubtractionAnimation color={topicColor} />;
-      case 'shp': return <ShapesAnimation color={topicColor} />;
-      case 'abc': return <AlphabetAnimation color={topicColor} />;
-      case 'pho': return <PhonicsAnimation color={topicColor} />;
-      case 'voc': return <VocabularyAnimation color={topicColor} />;
-      case 'grm': return <GrammarAnimation color={topicColor} />;
-      case 'tf':
-      case 'truefalse': return <TrueFalseAnimation color={topicColor} />;
-      case 'wrt':
-      case 'writing': return <WritingAnimation color={topicColor} />;
-      default: return <CountingAnimation color={topicColor} />;
-    }
-  };
-
-  const getTagline = () => {
-    switch (prefix) {
-      case 'cnt': return 'Master counting!';
-      case 'add': return 'Master addition!';
-      case 'sub': return 'Master subtraction!';
-      case 'shp': return 'Master shapes!';
-      case 'abc': return 'Master the alphabet!';
-      case 'pho': return 'Master letter sounds!';
-      case 'voc': return 'Master vocabulary!';
-      case 'grm': return 'Master grammar!';
-      default: return 'Ready to learn?';
-    }
-  };
+  }, [topicId]);
 
   return (
     <View style={styles.root}>
-      {content()}
+      {getAnimation(topicId, topicColor)}
       {showBtn && (
         <Animated.View style={{ opacity: btnAnim, transform: [{ scale: btnAnim }], width: '100%' }}>
           <TouchableOpacity style={[styles.continueBtn, { backgroundColor: topicColor }]} onPress={onComplete} activeOpacity={0.85}>
-            <Text style={styles.continueText}>{getTagline()} Let's go!</Text>
+            <Text style={styles.continueText}>{getTagline(topicId)} Let's go!</Text>
             <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
           </TouchableOpacity>
         </Animated.View>
@@ -403,14 +370,6 @@ const styles = StyleSheet.create({
   grammarWord: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1.5 },
   grammarText: { fontSize: 16, fontWeight: '700' },
   grammarType: { fontSize: 10, color: '#8892B0', fontWeight: '600', textTransform: 'uppercase' },
-  tfAnimRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  tfAnimCard: { width: 100, height: 100, borderRadius: 20, borderWidth: 2, alignItems: 'center', justifyContent: 'center', gap: 6 },
-  tfAnimText: { fontSize: 16, fontWeight: '800' },
-  tfAnimVs: { fontSize: 14, color: '#8892B0', fontWeight: '600' },
-  writingCol: { gap: 10, width: '100%', maxWidth: 280 },
-  writingCard: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 14, borderWidth: 1.5, backgroundColor: 'rgba(255,255,255,0.03)' },
-  writingWord: { fontSize: 18, fontWeight: '800' },
-  writingDesc: { fontSize: 13, color: '#8892B0' },
   continueBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: 16, marginTop: 8 },
   continueText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
 });

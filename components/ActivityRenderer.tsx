@@ -221,7 +221,14 @@ function MatchPairsActivity({ activity, submitted, onSubmit }: {
   const [matched, setMatched] = useState<Record<string, string>>({});
   const [wrong, setWrong] = useState<string[]>([]);
 
-  const [rightOptions] = useState(() => [...pairs.map(p => p.right)].sort(() => Math.random() - 0.5));
+  const [rightOptions] = useState(() => {
+    const arr = pairs.map(p => p.right);
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  });
 
   const tapLeft = (item: string) => {
     if (submitted || matched[item]) return;

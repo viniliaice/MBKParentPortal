@@ -38,7 +38,7 @@ export default function LessonScreen() {
   const [correctCount, setCorrectCount] = useState(0);
   const [showCelebration, setShowCelebration] = useState(false);
   const [activityResults, setActivityResults] = useState<{ activityId: string; type: string; correct: boolean }[]>([]);
-  const activityStartTime = React.useRef(Date.now());
+  const [answeredCurrent, setAnsweredCurrent] = useState(false);
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -60,7 +60,7 @@ export default function LessonScreen() {
   const currentIdx = typeof step === 'number' ? step : -1;
   const currentActivity = currentIdx >= 0 ? activities[currentIdx] : null;
 
-  const totalSteps = activities.length + 3;
+  const totalSteps = activities.length + 2;
   const currentStepNum = step === 'intro' ? 0 : step === 'animation' ? 1 : step === 'done' ? totalSteps - 1 : (step as number) + 2;
   const progress = currentStepNum / (totalSteps - 1);
 
@@ -69,12 +69,14 @@ export default function LessonScreen() {
     if (currentActivity) {
       setActivityResults(prev => [...prev, { activityId: currentActivity.id, type: currentActivity.type, correct: true }]);
     }
+    setAnsweredCurrent(true);
   };
 
   const handleIncorrect = () => {
     if (currentActivity) {
       setActivityResults(prev => [...prev, { activityId: currentActivity.id, type: currentActivity.type, correct: false }]);
     }
+    setAnsweredCurrent(true);
   };
 
   const handleAnimationComplete = () => {
@@ -85,7 +87,9 @@ export default function LessonScreen() {
     if (step === 'intro') {
       setStep('animation');
     } else if (typeof step === 'number') {
+      if (!answeredCurrent) return;
       if (step < activities.length - 1) {
+        setAnsweredCurrent(false);
         setStep(step + 1);
       } else {
         saveLessonProgress({
@@ -176,9 +180,14 @@ export default function LessonScreen() {
                   onCorrect={handleCorrect}
                   onIncorrect={handleIncorrect}
                 />
-                <TouchableOpacity style={[styles.nextBtn, { backgroundColor: topic.color }]} onPress={handleNext} activeOpacity={0.85}>
-                  <Text style={styles.nextBtnText}>{(step as number) < activities.length - 1 ? 'Next' : 'Finish'}</Text>
-                  <Ionicons name={(step as number) < activities.length - 1 ? 'arrow-forward' : 'checkmark'} size={18} color="#FFFFFF" />
+                <TouchableOpacity
+                  style={[styles.nextBtn, { backgroundColor: answeredCurrent ? topic.color : 'rgba(255,255,255,0.1)' }]}
+                  onPress={handleNext}
+                  activeOpacity={0.85}
+                  disabled={!answeredCurrent}
+                >
+                  <Text style={[styles.nextBtnText, !answeredCurrent && { color: '#4A5080' }]}>{(step as number) < activities.length - 1 ? 'Next' : 'Finish'}</Text>
+                  <Ionicons name={(step as number) < activities.length - 1 ? 'arrow-forward' : 'checkmark'} size={18} color={answeredCurrent ? '#FFFFFF' : '#4A5080'} />
                 </TouchableOpacity>
               </Animated.View>
             )}

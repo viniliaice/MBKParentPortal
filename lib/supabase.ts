@@ -59,3 +59,27 @@ export type SupabaseProfile = {
   expo_push_token: string | null;
   createdAt: string;
 };
+
+export type SupabaseLessonProgress = {
+  id: string;
+  parent_id: string;
+  lesson_id: string;
+  completed: boolean;
+  xp_earned: number;
+  correct_count: number;
+  total_activities: number;
+  completed_at: string | null;
+  activity_results: any;
+};
+
+export type SupabaseGamification = {
+  id: string;
+  parent_id: string;
+  current_streak: number;
+  longest_streak: number;
+  last_lesson_date: string | null;
+  level: number;
+  total_xp_earned: number;
+  daily_reward_claimed: boolean;
+  daily_reward_date: string | null;
+};

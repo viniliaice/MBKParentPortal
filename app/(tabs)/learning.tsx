@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import AuroraBackground from '@/components/AuroraBackground';
 import { useApp } from '@/context/AppContext';
-import { SUBJECTS, Subject, Topic } from '@/data/learningData';
+import { SUBJECTS, Topic } from '@/data/learningData';
 import { computeMastery } from '@/context/AppContext';
 
 const ACTIVITY_TYPE_LABELS: Record<string, string> = {
@@ -77,7 +77,8 @@ export default function LearningScreen() {
         </View>
 
         {(() => {
-          const mastery = computeMastery(lessonProgress);
+          const subjectLessonIds = new Set(subject.topics.flatMap(t => t.lessons.map(l => l.id)));
+          const mastery = computeMastery(lessonProgress, subjectLessonIds);
           const entries = Object.entries(mastery);
           return entries.length > 0 ? (
             <View style={styles.masteryCard}>
