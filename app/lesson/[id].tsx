@@ -27,18 +27,19 @@ const TYPE_DESCRIPTIONS: Record<string, string> = {
 
 export default function LessonScreen() {
   const { id, topicId } = useLocalSearchParams<{ id: string; topicId: string }>();
-  const { saveLessonProgress, gamification } = useApp();
+  const { saveLessonAttempt, gamification } = useApp();
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
 
   const lesson = getLessonById(id);
   const topic = getTopicById(topicId);
 
-  const [step, setStep] = useState<'intro' | 'animation' | number | 'done'>('intro');
+  const [step, setStep] = useState<'intro' | 'animation' | number | 'review' | 'done'>('intro');
   const [correctCount, setCorrectCount] = useState(0);
   const [showCelebration, setShowCelebration] = useState(false);
   const [activityResults, setActivityResults] = useState<{ activityId: string; type: string; correct: boolean }[]>([]);
-  const activityStartTime = React.useRef(Date.now());
+  const [answeredCurrent, setAnsweredCurrent] = useState(false);
+  const [reviewingActivityIdx, setReviewingActivityIdx] = useState<number>(-1);
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -60,7 +61,7 @@ export default function LessonScreen() {
   const currentIdx = typeof step === 'number' ? step : -1;
   const currentActivity = currentIdx >= 0 ? activities[currentIdx] : null;
 
-  const totalSteps = activities.length + 3;
+  const totalSteps = activities.length + 2;
   const currentStepNum = step === 'intro' ? 0 : step === 'animation' ? 1 : step === 'done' ? totalSteps - 1 : (step as number) + 2;
   const progress = currentStepNum / (totalSteps - 1);
 
@@ -69,12 +70,22 @@ export default function LessonScreen() {
     if (currentActivity) {
       setActivityResults(prev => [...prev, { activityId: currentActivity.id, type: currentActivity.type, correct: true }]);
     }
+    setAnsweredCurrent(true);
   };
 
   const handleIncorrect = () => {
     if (currentActivity) {
       setActivityResults(prev => [...prev, { activityId: currentActivity.id, type: currentActivity.type, correct: false }]);
     }
+    setAnsweredCurrent(true);
+    setReviewingActivityIdx(currentIdx);
+    setStep('review');
+  };
+
+  const handleReviewComplete = () => {
+    setStep(reviewingActivityIdx);
+    setAnsweredCurrent(false);
+    setActivityResults(prev => prev.slice(0, -1));
   };
 
   const handleAnimationComplete = () => {
@@ -85,18 +96,12 @@ export default function LessonScreen() {
     if (step === 'intro') {
       setStep('animation');
     } else if (typeof step === 'number') {
+      if (!answeredCurrent) return;
       if (step < activities.length - 1) {
+        setAnsweredCurrent(false);
         setStep(step + 1);
       } else {
-        saveLessonProgress({
-          lessonId: lesson.id,
-          completed: true,
-          xpEarned: lesson.xp,
-          correctCount,
-          totalActivities: activities.length,
-          completedAt: new Date().toISOString(),
-          activityResults: activityResults.map(ar => ({ ...ar, timeSpentMs: 0 })),
-        });
+        saveLessonAttempt(lesson.id, correctCount, activities.length, activityResults.map(ar => ({ ...ar, timeSpentMs: 0 })));
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setShowCelebration(true);
       }
@@ -128,6 +133,10 @@ export default function LessonScreen() {
         {step === 'animation' ? (
           <View style={styles.animationContainer}>
             <ConceptAnimation topicId={topicId} topicColor={topic.color} onComplete={handleAnimationComplete} />
+          </View>
+        ) : step === 'review' ? (
+          <View style={styles.animationContainer}>
+            <ConceptAnimation topicId={topicId} topicColor={topic.color} review onComplete={handleReviewComplete} />
           </View>
         ) : (
           <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -176,9 +185,14 @@ export default function LessonScreen() {
                   onCorrect={handleCorrect}
                   onIncorrect={handleIncorrect}
                 />
-                <TouchableOpacity style={[styles.nextBtn, { backgroundColor: topic.color }]} onPress={handleNext} activeOpacity={0.85}>
-                  <Text style={styles.nextBtnText}>{(step as number) < activities.length - 1 ? 'Next' : 'Finish'}</Text>
-                  <Ionicons name={(step as number) < activities.length - 1 ? 'arrow-forward' : 'checkmark'} size={18} color="#FFFFFF" />
+                <TouchableOpacity
+                  style={[styles.nextBtn, { backgroundColor: answeredCurrent ? topic.color : 'rgba(255,255,255,0.1)' }]}
+                  onPress={handleNext}
+                  activeOpacity={0.85}
+                  disabled={!answeredCurrent}
+                >
+                  <Text style={[styles.nextBtnText, !answeredCurrent && { color: '#4A5080' }]}>{(step as number) < activities.length - 1 ? 'Next' : 'Finish'}</Text>
+                  <Ionicons name={(step as number) < activities.length - 1 ? 'arrow-forward' : 'checkmark'} size={18} color={answeredCurrent ? '#FFFFFF' : '#4A5080'} />
                 </TouchableOpacity>
               </Animated.View>
             )}

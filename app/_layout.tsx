@@ -24,7 +24,7 @@ SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
 
-const VALID_SEGMENTS = new Set(['(tabs)', 'login', 'homework', 'attendance', 'results', 'lesson']);
+const VALID_SEGMENTS = new Set(['(tabs)', 'login', 'homework', 'attendance', 'results', 'lesson', 'quizzes']);
 
 function AuthGate() {
   const { user, loading } = useAuth();
@@ -32,7 +32,7 @@ function AuthGate() {
   const segments = useSegments();
 
   useEffect(() => {
-    if (loading) return;
+    if (loading || segments.length === 0) return;
     const inTabs = segments[0] === '(tabs)';
     if (!user && inTabs) {
       router.replace('/login');
@@ -71,6 +71,7 @@ function RootLayoutNav() {
         <Stack.Screen name="attendance" options={{ presentation: 'card' }} />
         <Stack.Screen name="results" options={{ presentation: 'card' }} />
         <Stack.Screen name="lesson/[id]" options={{ presentation: 'card' }} />
+        <Stack.Screen name="quizzes" />
       </Stack>
     </>
   );

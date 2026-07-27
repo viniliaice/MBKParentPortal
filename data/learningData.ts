@@ -35,6 +35,7 @@ export interface Lesson {
   xp: number;
   badgeName: string;
   badgeIcon: string;
+  prerequisiteLessonId?: string;
 }
 
 export interface Topic {
@@ -90,6 +91,7 @@ const mathCounting: Topic = {
     },
     {
       id: 'cnt_2', title: 'Count to 10', xp: 55,
+      prerequisiteLessonId: 'cnt_1',
       badgeName: 'Number Tracker', badgeIcon: '🔟',
       objective: 'Count and place numbers from 1 to 10.',
       explanation: 'After 5 comes 6, 7, 8, 9, 10. Use a number line to find where numbers live.',
@@ -114,6 +116,7 @@ const mathCounting: Topic = {
     },
     {
       id: 'cnt_3', title: 'Number Order Challenge', xp: 60,
+      prerequisiteLessonId: 'cnt_2',
       badgeName: 'Order Master', badgeIcon: '🏆',
       objective: 'Put numbers in the correct order.',
       explanation: 'Numbers always follow a pattern: each one is one more than the last.',
@@ -170,6 +173,7 @@ const mathAddition: Topic = {
     },
     {
       id: 'add_2', title: 'Adding to 10', xp: 55,
+      prerequisiteLessonId: 'add_1',
       badgeName: 'Plus Power', badgeIcon: '💪',
       objective: 'Add numbers with sums up to 10.',
       explanation: 'Use the number line — start at the bigger number and jump forward.',
@@ -194,6 +198,7 @@ const mathAddition: Topic = {
     },
     {
       id: 'add_3', title: 'Addition Stories', xp: 65,
+      prerequisiteLessonId: 'add_2',
       badgeName: 'Story Solver', badgeIcon: '📖',
       objective: 'Solve addition problems in real-life stories.',
       explanation: 'Read the story, find the two numbers, and add them.',
@@ -250,6 +255,7 @@ const mathSubtraction: Topic = {
     },
     {
       id: 'sub_2', title: 'Subtract Within 10', xp: 55,
+      prerequisiteLessonId: 'sub_1',
       badgeName: 'Difference Finder', badgeIcon: '🔍',
       objective: 'Subtract numbers with answers up to 10.',
       explanation: 'Use a number line — start at the bigger number and hop backwards.',
@@ -274,6 +280,7 @@ const mathSubtraction: Topic = {
     },
     {
       id: 'sub_3', title: 'Subtraction Stories', xp: 65,
+      prerequisiteLessonId: 'sub_2',
       badgeName: 'Take Away Champ', badgeIcon: '🏅',
       objective: 'Solve subtraction word problems.',
       explanation: 'Find the "start" and "how many taken away" in the story, then subtract.',
@@ -342,6 +349,7 @@ const mathShapes: Topic = {
     },
     {
       id: 'shp_2', title: 'Count Sides & Corners', xp: 55,
+      prerequisiteLessonId: 'shp_1',
       badgeName: 'Corner Counter', badgeIcon: '📐',
       objective: 'Count the sides and corners of shapes.',
       explanation: 'A corner is where two sides meet. A triangle has 3 corners, a square has 4.',
@@ -366,6 +374,7 @@ const mathShapes: Topic = {
     },
     {
       id: 'shp_3', title: 'Shape Challenge', xp: 65,
+      prerequisiteLessonId: 'shp_2',
       badgeName: 'Geometry Star', badgeIcon: '🌟',
       objective: 'Order shapes and solve shape puzzles.',
       explanation: 'Now we mix counting sides with ordering shapes — you\'re a shape expert!',
@@ -429,6 +438,7 @@ const englishAlphabet: Topic = {
     },
     {
       id: 'abc_2', title: 'Letters G to M', xp: 55,
+      prerequisiteLessonId: 'abc_1',
       badgeName: 'Letter Explorer', badgeIcon: '🔠',
       objective: 'Recognise letters G through M.',
       explanation: 'G, H, I, J, K, L, M — the middle of the alphabet. Practice saying them in order!',
@@ -459,6 +469,7 @@ const englishAlphabet: Topic = {
     },
     {
       id: 'abc_3', title: 'Alphabet Order Challenge', xp: 65,
+      prerequisiteLessonId: 'abc_2',
       badgeName: 'Alphabet Champion', badgeIcon: '🏆',
       objective: 'Arrange letters in alphabetical order.',
       explanation: 'Putting letters in ABC order is called alphabetical order. A always comes before B, B before C, and so on.',
@@ -515,6 +526,7 @@ const englishPhonics: Topic = {
     },
     {
       id: 'pho_2', title: 'Letter Sounds', xp: 55,
+      prerequisiteLessonId: 'pho_1',
       badgeName: 'Sound Matcher', badgeIcon: '🎵',
       objective: 'Match letters to the sounds they make.',
       explanation: 'Every letter makes a special sound. S says /s/, M says /m/, T says /t/, P says /p/.',
@@ -551,6 +563,7 @@ const englishPhonics: Topic = {
     },
     {
       id: 'pho_3', title: 'Blend & Read', xp: 65,
+      prerequisiteLessonId: 'pho_2',
       badgeName: 'Blending Pro', badgeIcon: '🌟',
       objective: 'Blend letter sounds to read simple words.',
       explanation: 'Blending means saying each sound then joining them: /c/ /a/ /t/ → "cat".',
@@ -623,6 +636,7 @@ const englishVocabulary: Topic = {
     },
     {
       id: 'voc_2', title: 'Animals & Their Homes', xp: 55,
+      prerequisiteLessonId: 'voc_1',
       badgeName: 'Animal Talker', badgeIcon: '🐾',
       objective: 'Name animals and where they live.',
       explanation: 'Animals live in special homes: birds live in nests, fish live in the ocean, bears live in caves.',
@@ -653,6 +667,7 @@ const englishVocabulary: Topic = {
     },
     {
       id: 'voc_3', title: 'Vocabulary Challenge', xp: 65,
+      prerequisiteLessonId: 'voc_2',
       badgeName: 'Word Master', badgeIcon: '🎓',
       objective: 'Use vocabulary in context and order by meaning.',
       explanation: 'Great vocabulary means picking the best word for each situation.',
@@ -716,6 +731,7 @@ const englishGrammar: Topic = {
     },
     {
       id: 'grm_2', title: 'Verbs — Action Words', xp: 55,
+      prerequisiteLessonId: 'grm_1',
       badgeName: 'Action Hero', badgeIcon: '⚡',
       objective: 'Identify verbs (action words) in sentences.',
       explanation: 'A verb is an action word: run, jump, eat, sleep. Every sentence needs a verb!',
@@ -740,6 +756,7 @@ const englishGrammar: Topic = {
     },
     {
       id: 'grm_3', title: 'Build a Sentence', xp: 65,
+      prerequisiteLessonId: 'grm_2',
       badgeName: 'Sentence Builder', badgeIcon: '🏗️',
       objective: 'Put words in the correct order to build sentences.',
       explanation: 'English sentences usually go: Subject → Verb → Object. "The dog plays ball."',

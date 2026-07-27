@@ -5,8 +5,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import AuroraBackground from '@/components/AuroraBackground';
 import { useApp } from '@/context/AppContext';
-import { SUBJECTS, Subject, Topic } from '@/data/learningData';
+import { SUBJECTS, Topic, Lesson } from '@/data/learningData';
 import { computeMastery } from '@/context/AppContext';
+import { isLessonUnlocked, MASTERY_THRESHOLD } from '@/lib/mastery';
 
 const ACTIVITY_TYPE_LABELS: Record<string, string> = {
   multipleChoice: 'Multiple Choice',
@@ -77,7 +78,8 @@ export default function LearningScreen() {
         </View>
 
         {(() => {
-          const mastery = computeMastery(lessonProgress);
+          const subjectLessonIds = new Set(subject.topics.flatMap(t => t.lessons.map(l => l.id)));
+          const mastery = computeMastery(lessonProgress, subjectLessonIds);
           const entries = Object.entries(mastery);
           return entries.length > 0 ? (
             <View style={styles.masteryCard}>
@@ -151,31 +153,45 @@ function TopicCard({ topic, lessonProgress }: { topic: Topic; lessonProgress: Re
           {topic.lessons.map((lesson, i) => {
             const progress = lessonProgress[lesson.id];
             const done = progress?.completed;
+            const unlocked = isLessonUnlocked(lesson.id, lesson.prerequisiteLessonId, lessonProgress);
+            const masteryPct = progress?.masteryLevel ?? 0;
             const types = [...new Set(lesson.activities.map(a => a.type))];
+            const showLocked = !unlocked && !!lesson.prerequisiteLessonId;
+            const showMastery = unlocked && done && masteryPct > 0;
             return (
               <TouchableOpacity
                 key={lesson.id}
-                style={[styles.lessonRow, done && styles.lessonRowDone]}
-                onPress={() => router.push({ pathname: '/lesson/[id]', params: { id: lesson.id, topicId: topic.id } })}
-                activeOpacity={0.8}
+                style={[styles.lessonRow, done && styles.lessonRowDone, !unlocked && styles.lessonRowLocked]}
+                onPress={() => { if (unlocked) router.push({ pathname: '/lesson/[id]', params: { id: lesson.id, topicId: topic.id } }); }}
+                activeOpacity={unlocked ? 0.8 : 1}
               >
-                <View style={[styles.lessonNum, done && { backgroundColor: topic.color }]}>
-                  {done ? <Ionicons name="checkmark" size={14} color="#FFFFFF" /> : <Text style={[styles.lessonNumText, { color: topic.color }]}>{i + 1}</Text>}
+                <View style={[styles.lessonNum, done && { backgroundColor: topic.color }, !unlocked && { backgroundColor: 'rgba(255,255,255,0.04)' }]}>
+                  {!unlocked ? <Ionicons name="lock-closed" size={13} color="#5A6781" /> :
+                   done ? <Ionicons name="checkmark" size={14} color="#FFFFFF" /> :
+                   <Text style={[styles.lessonNumText, { color: topic.color }]}>{i + 1}</Text>}
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.lessonTitle}>{lesson.title}</Text>
-                  <View style={styles.lessonMeta}>
-                    {types.map(type => (
-                      <View key={type} style={styles.activityTypePill}>
-                        <ActivityTypeIcon type={type} size={10} />
-                        <Text style={styles.activityTypePillText}>{ACTIVITY_TYPE_LABELS[type]}</Text>
-                      </View>
-                    ))}
+                  <Text style={[styles.lessonTitle, !unlocked && { color: '#5A6781' }]}>{lesson.title}</Text>
+                  {showLocked ? (
+                    <Text style={styles.lockedHint}>Master the previous lesson first</Text>
+                  ) : showMastery ? (
+                    <Text style={styles.masteryHint}>Mastery {masteryPct}%</Text>
+                  ) : (
+                    <View style={styles.lessonMeta}>
+                      {types.map(type => (
+                        <View key={type} style={styles.activityTypePill}>
+                          <ActivityTypeIcon type={type} size={10} />
+                          <Text style={styles.activityTypePillText}>{ACTIVITY_TYPE_LABELS[type]}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+                {unlocked ? (
+                  <View style={styles.xpPill}>
+                    <Text style={styles.xpPillText}>+{lesson.xp} XP</Text>
                   </View>
-                </View>
-                <View style={styles.xpPill}>
-                  <Text style={styles.xpPillText}>+{lesson.xp} XP</Text>
-                </View>
+                ) : null}
               </TouchableOpacity>
             );
           })}
@@ -242,6 +258,9 @@ const styles = StyleSheet.create({
   lessonList: { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)' },
   lessonRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.04)' },
   lessonRowDone: { opacity: 0.8 },
+  lessonRowLocked: { opacity: 0.55 },
+  lockedHint: { fontSize: 11, color: '#5A6781', marginTop: 2 },
+  masteryHint: { fontSize: 11, color: '#2ECC71', marginTop: 2, fontWeight: '600' },
   lessonNum: { width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
   lessonNumText: { fontSize: 12, fontWeight: '700' },
   lessonTitle: { fontSize: 14, fontWeight: '600', color: '#FFFFFF', marginBottom: 4 },

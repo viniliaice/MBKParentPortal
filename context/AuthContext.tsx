@@ -30,24 +30,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const login = async (email: string, _password: string): Promise<string | null> => {
+  const login = async (email: string, password: string): Promise<string | null> => {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('email', email.trim().toLowerCase())
-        .single();
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
 
-      if (error || !data) {
-        return 'Parent account not found with this email.';
+      if (authError) {
+        if (authError.message === 'Invalid login credentials') {
+          return 'Incorrect email or password.';
+        }
+        return authError.message;
       }
 
-      const profile = data as SupabaseProfile;
+      const authUserId = authData.user?.id;
+      if (!authUserId) {
+        return 'Authentication failed. Please try again.';
+      }
+
+      let { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('auth_id', authUserId)
+        .single();
+
+      if (profileError || !profile) {
+        const { data: fallbackProfile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('email', email.trim().toLowerCase())
+          .single();
+
+        if (!fallbackProfile) {
+          await supabase.auth.signOut();
+          return 'Parent account not found. Contact support.';
+        }
+
+        await supabase
+          .from('profiles')
+          .update({ auth_id: authUserId })
+          .eq('id', fallbackProfile.id);
+
+        profile = fallbackProfile as SupabaseProfile;
+      }
+
       const appUser: User = {
-        id: profile.id,
-        name: profile.name,
-        email: profile.email,
-        profileId: profile.id,
+        id: (profile as SupabaseProfile).id,
+        name: (profile as SupabaseProfile).name,
+        email: (profile as SupabaseProfile).email,
+        profileId: (profile as SupabaseProfile).id,
       };
 
       await AsyncStorage.setItem(AUTH_KEY, JSON.stringify(appUser));
@@ -59,6 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
+    await supabase.auth.signOut();
     await AsyncStorage.removeItem(AUTH_KEY);
     setUser(null);
   };
