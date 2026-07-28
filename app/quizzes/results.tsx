@@ -9,6 +9,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import * as Speech from 'expo-speech';
 import AuroraBackground from '@/components/AuroraBackground';
 import { supabase, type QuizAttempt, type Quiz, type QuizQuestion, type QuizAnswer } from '@/lib/supabase';
+import { gradeColorForPct } from '@/lib/grading';
 
 export default function QuizResultsScreen() {
   const { id: attemptId } = useLocalSearchParams<{ id: string }>();
@@ -97,13 +98,7 @@ export default function QuizResultsScreen() {
     ? Math.round((attempt.totalEarned / attempt.totalPossible) * 100)
     : 0;
 
-  const getGradeColor = (p: number) => {
-    if (p >= 80) return '#2ECC71';
-    if (p >= 60) return '#F59E0B';
-    return '#FF5370';
-  };
-
-  const gradeColor = getGradeColor(pct);
+  const gradeColor = gradeColorForPct(pct);
 
   if (!quiz.showResults) {
     return (

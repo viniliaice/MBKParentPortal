@@ -6,11 +6,234 @@ export type ActivityType =
   | 'matchPairs'
   | 'numberLine'
   | 'trueFalse'
-  | 'writing';
+  | 'writing'
+  | 'explorable'
+  | 'interactiveSimulation'
+  | 'interactiveDiagram'
+  | 'parameterExperiment'
+  | 'buildChallenge'
+  | 'causeEffectExplorer'
+  | 'systemBuilder'
+  | 'physicsPlayground'
+  | 'animatedProcess'
+  | 'guidedDiscovery'
+  | 'predictionChallenge'
+  | 'interactiveTimeline'
+  | 'hotspotExplorer'
+  | 'measurementTool'
+  | 'dragMechanism'
+  | 'flowSimulation';
 
 export interface MatchPair {
   left: string;
   right: string;
+}
+
+/**
+ * A threshold-triggered callout for an interactive explorable — the message
+ * shown once the slider crosses `at` (0-100), replaced by the next
+ * threshold's message as the user keeps dragging. Mirrors Brilliant.org's
+ * "drag to see what happens" explorables: manipulate a variable, read live
+ * feedback, no single "correct" answer — the exercise IS the exploration.
+ */
+export interface ExplorableThreshold {
+  at: number;
+  message: string;
+}
+
+export type ExplorableScene = 'toilet' | 'waterTower' | 'fridge' | 'helicopter' | 'contamination';
+
+export interface ExplorableConfig {
+  scene: ExplorableScene;
+  sliderLabel: string;
+  thresholds: ExplorableThreshold[];
+  /** slider value (0-100) the user must reach at least once before "Got it" unlocks. Default 85. */
+  completionThreshold?: number;
+}
+
+/*
+ * ---------------------------------------------------------------------
+ * Premium interactive activity engine — config types.
+ *
+ * These are subject-agnostic building blocks: a Physics lesson wires in
+ * float valves and refrigerant pressure, a future Biology lesson could wire
+ * in the exact same shapes with heart-rate/blood-oxygen parameters. Nothing
+ * below references any specific domain. Each config type corresponds to one
+ * reusable component under components/engine/ (see that folder's README
+ * comment in ActivityRenderer.tsx for the full kind -> component mapping).
+ * ---------------------------------------------------------------------
+ */
+
+/** A draggable numeric input driving a simulation (slider or dial). */
+export interface SimulationParameter {
+  id: string;
+  label: string;
+  unit?: string;
+  min: number;
+  max: number;
+  defaultValue?: number;
+  color?: string;
+}
+
+export type ReadoutKind = 'gauge' | 'thermometer';
+
+/**
+ * A live readout derived from a parameter's current value via a plain
+ * linear mapping (fromMin/fromMax -> toMin/toMax, optionally inverted).
+ * Kept declarative (no embedded functions) so data/learningData.ts stays
+ * pure, serializable curriculum data — consistent with every other config
+ * in this file (ExplorableConfig, etc). Linear mapping is enough to model
+ * "pressure rises with tower height" or "fridge inside temp falls as
+ * compressor speed rises" without needing arbitrary code in content data.
+ */
+export interface SimulationReadout {
+  id: string;
+  kind: ReadoutKind;
+  label: string;
+  unit?: string;
+  sourceParameterId: string;
+  /** value range of the readout itself, e.g. temperature -10..40 */
+  toMin: number;
+  toMax: number;
+  /** true = as the source parameter rises, this readout falls */
+  invert?: boolean;
+  color: string;
+}
+
+/**
+ * Drag one or more parameters, watch live readouts react. Powers
+ * `parameterExperiment`, and is reused (via components/engine/InteractiveSimulation.tsx
+ * and MeasurementTool.tsx aliases) for `interactiveSimulation`, `physicsPlayground`,
+ * and `measurementTool` — those three names describe the same interaction
+ * shape (drag a variable, observe a live measurement) so they share one
+ * battle-tested component instead of three near-duplicate implementations.
+ */
+export interface ParameterExperimentConfig {
+  parameters: SimulationParameter[];
+  readouts: SimulationReadout[];
+  /** scene key resolved to a renderer in components/engine's scene registry. */
+  sceneKey?: string;
+  /** narration key resolved to a narration-text function in the same registry. */
+  narrateKey?: string;
+  goalParameterId?: string;
+  goalThresholdPct?: number;
+}
+
+export interface CauseEffectStage {
+  id: string;
+  caption: string;
+  atMs: number;
+}
+
+/**
+ * Press a trigger, watch a chained sequence of effects animate through
+ * stages. Powers `causeEffectExplorer`, and is reused (via
+ * components/engine/FlowSimulation.tsx) for `animatedProcess`,
+ * `interactiveTimeline`, and `flowSimulation` — all four names describe a
+ * sequential, replayable "push button, watch it happen" demo.
+ */
+export interface CauseEffectExplorerConfig {
+  triggerLabel: string;
+  triggerIcon?: string;
+  stages: CauseEffectStage[];
+  totalDurationMs?: number;
+  /** scene key resolved to a renderer in components/engine. */
+  sceneKey: string;
+  completionLabel?: string;
+}
+
+/** A part available to place in a build/repair challenge. */
+export interface BuildPart {
+  id: string;
+  label: string;
+  icon?: string;
+  required: boolean;
+}
+
+/**
+ * Select the minimal correct set of parts to solve a goal. Powers
+ * `buildChallenge`, and is reused (via components/engine/SystemBuilder.tsx)
+ * for `systemBuilder` — assembling a system from parts is the same
+ * interaction as repairing something from parts.
+ */
+export interface BuildChallengeConfig {
+  prompt: string;
+  parts: BuildPart[];
+  successMessage: string;
+  failureMessage: string;
+}
+
+export interface DiscoveryFact {
+  id: string;
+  icon?: string;
+  title: string;
+  detail: string;
+}
+
+/**
+ * A short sequence of tap-to-reveal facts — used both as a bite-sized
+ * "small explanation" bridge between activities and as a lesson's closing
+ * "real world application" step. Powers `guidedDiscovery`.
+ */
+export interface GuidedDiscoveryConfig {
+  intro: string;
+  facts: DiscoveryFact[];
+}
+
+/** A labelled, positioned part in a diagram (0-100 coordinate space). */
+export interface DiagramHotspot {
+  id: string;
+  label: string;
+  x: number; // 0-100
+  y: number; // 0-100
+  icon?: string;
+  detail: string;
+}
+
+/**
+ * Tap labelled hotspots on a diagram to reveal what each part does. Powers
+ * `hotspotExplorer`, and is reused (via components/engine/AnimatedDiagram
+ * as its rendering surface) for `interactiveDiagram` — both names describe
+ * "explore a labelled diagram by tapping its parts."
+ */
+export interface HotspotExplorerConfig {
+  sceneKey: string;
+  hotspots: DiagramHotspot[];
+  /** fraction of hotspots (0-1) that must be viewed before completion unlocks. Default 1 (all). */
+  requiredViewFraction?: number;
+}
+
+export interface PredictionOption {
+  id: string;
+  label: string;
+}
+
+/**
+ * Predict-observe-explain: the learner commits to a guess before seeing the
+ * simulated outcome, then the actual result is revealed with a short
+ * explanation of why. Powers `predictionChallenge`.
+ */
+export interface PredictionChallengeConfig {
+  prompt: string;
+  options: PredictionOption[];
+  correctOptionId: string;
+  /** scene key rendered once the guess is locked in, showing the real outcome. */
+  sceneKey?: string;
+  explanation: string;
+}
+
+/**
+ * Drag a single mechanical part along a track and observe the effect —
+ * powers standalone `dragMechanism` activities (distinct from
+ * ParameterExperiment's slider, this is a physical part with a spring-back
+ * release for a "weighted" feel).
+ */
+export interface DragMechanismConfig {
+  title: string;
+  partIcon: string;
+  minLabel: string;
+  maxLabel: string;
+  describeKey: string;
 }
 
 export interface Activity {
@@ -24,6 +247,14 @@ export interface Activity {
   pairs?: MatchPair[];
   min?: number;
   max?: number;
+  explorableConfig?: ExplorableConfig;
+  parameterExperimentConfig?: ParameterExperimentConfig;
+  causeEffectConfig?: CauseEffectExplorerConfig;
+  buildChallengeConfig?: BuildChallengeConfig;
+  guidedDiscoveryConfig?: GuidedDiscoveryConfig;
+  hotspotConfig?: HotspotExplorerConfig;
+  predictionConfig?: PredictionChallengeConfig;
+  dragMechanismConfig?: DragMechanismConfig;
 }
 
 export interface Lesson {
@@ -49,7 +280,7 @@ export interface Topic {
 }
 
 export interface Subject {
-  id: 'math' | 'english';
+  id: 'math' | 'english' | 'physics';
   title: string;
   color: string;
   iconName: string;
@@ -785,6 +1016,303 @@ const englishGrammar: Topic = {
   ],
 };
 
+const householdPhysics: Topic = {
+  id: 'household-physics', title: 'Household Physics', order: 1,
+  description: 'Drag, explore, and discover the physics hiding in everyday objects.',
+  color: '#22D3EE', iconName: 'flask',
+  lessons: [
+    {
+      id: 'phy_1', title: 'Toilets', xp: 110,
+      badgeName: 'Siphon Scientist', badgeIcon: '🚽',
+      objective: 'Discover how gravity, pressure, and a siphon work together to flush a toilet — then repair one yourself.',
+      explanation: 'A toilet bowl always keeps some water in it, sealed by a bent pipe called a trap. Pushing the handle lifts a flapper and lets tank water rush into the bowl. Once enough water piles over the bend in the trap, the whole pipe fills up and starts acting like a straw — sucking the water (and whatever is in the bowl) down and away. That sudden "straw" effect is called a siphon. A second mechanism, the float valve, uses gravity and buoyancy to know exactly when to stop refilling the tank — conserving water instead of overflowing it.',
+      activities: [
+        // --- Interactive Discovery: flush the toilet, watch the siphon fire ---
+        {
+          id: 'phy1_flush', type: 'causeEffectExplorer', difficulty: 2,
+          question: 'Press flush and watch gravity and pressure team up to create a siphon.',
+          hint: 'Watch the water level in the bowl rise, then suddenly disappear — that sudden drop is the siphon.',
+          options: [], correctAnswer: 'explored',
+          causeEffectConfig: {
+            triggerLabel: 'Press the flush handle',
+            triggerIcon: 'arrow-down-circle',
+            sceneKey: 'toiletFlush',
+            totalDurationMs: 2400,
+            completionLabel: 'I saw the siphon!',
+            stages: [
+              { id: 's1', atMs: 0, caption: 'At rest: gravity holds a resting pool of water in the bowl, sealed by the trap below it.' },
+              { id: 's2', atMs: 350, caption: 'The flapper lifts. Tank water pours into the bowl, pushed down by gravity.' },
+              { id: 's3', atMs: 1150, caption: 'The bowl fills past the top of the trap\'s bend — pressure is building inside that pipe.' },
+              { id: 's4', atMs: 1700, caption: 'SIPHON! The trap pipe is completely full of water, so it starts acting like a straw, pulling everything through in one continuous flow.' },
+              { id: 's5', atMs: 2150, caption: 'Air breaks the siphon, the flapper drops shut, and the float valve starts letting the tank refill.' },
+            ],
+          },
+        },
+        // --- Small Explanation, tap-to-reveal (bridges discovery -> simulation) ---
+        {
+          id: 'phy1_facts', type: 'guidedDiscovery', difficulty: 1,
+          question: 'Two forces are doing all the work here. Tap each card to find out what they are.',
+          hint: '',
+          options: [], correctAnswer: 'explored',
+          guidedDiscoveryConfig: {
+            intro: 'Before you experiment with the float valve, meet the two physics ideas behind every flush.',
+            facts: [
+              { id: 'f1', icon: 'arrow-down', title: 'Gravity', detail: 'Gravity pulls tank water down into the bowl, and pulls bowl water down through the trap — no pump needed anywhere in the system.' },
+              { id: 'f2', icon: 'water', title: 'Pressure & the siphon', detail: 'Once the trap pipe is completely full, the weight of water on the long side creates enough pressure to pull everything through — that continuous pull is the siphon effect.' },
+            ],
+          },
+        },
+        // --- Simulation: drag the float valve, watch the tank respond ---
+        {
+          id: 'phy1_float_drag', type: 'dragMechanism', difficulty: 2,
+          question: 'Drag the float up and down and feel how it controls the water level.',
+          hint: 'A low float means an empty tank; a high float means a full one.',
+          options: [], correctAnswer: 'explored',
+          dragMechanismConfig: {
+            title: 'The Float Valve',
+            partIcon: 'water',
+            minLabel: 'Empty tank',
+            maxLabel: 'Full tank',
+            describeKey: 'floatValve',
+          },
+        },
+        // --- Experiment: parameter + live gauges (refill speed, pressure) ---
+        {
+          id: 'phy1_experiment', type: 'parameterExperiment', difficulty: 3,
+          question: 'Raise the float higher and watch what happens to refill speed and water pressure.',
+          hint: 'As the float rises, the valve closes — less water is flowing, so both readings should fall.',
+          options: [], correctAnswer: 'explored',
+          parameterExperimentConfig: {
+            sceneKey: 'toiletTank',
+            parameters: [
+              { id: 'floatHeight', label: 'Float height', unit: '%', min: 0, max: 100, defaultValue: 10, color: '#22D3EE' },
+            ],
+            readouts: [
+              { id: 'refillSpeed', kind: 'gauge', label: 'Refill Speed', sourceParameterId: 'floatHeight', toMin: 0, toMax: 100, invert: true, color: '#3D5AFE' },
+              { id: 'pressure', kind: 'gauge', label: 'Valve Pressure', sourceParameterId: 'floatHeight', toMin: 0, toMax: 100, invert: true, color: '#22D3EE' },
+            ],
+            goalParameterId: 'floatHeight',
+            goalThresholdPct: 90,
+          },
+        },
+        // --- Challenge: repair the leaking toilet with the fewest parts ---
+        {
+          id: 'phy1_repair', type: 'buildChallenge', difficulty: 3,
+          question: 'This toilet keeps running non-stop, wasting water. Pick only the parts you actually need to fix it.',
+          hint: 'A running toilet is almost always a worn flapper not sealing, or a float set too high.',
+          options: [], correctAnswer: 'repaired',
+          buildChallengeConfig: {
+            prompt: 'Select the parts required to repair a toilet that keeps running. Choosing extra unnecessary parts will fail the repair — real plumbers fix it with the fewest parts possible.',
+            parts: [
+              { id: 'flapper', label: 'New Flapper', icon: 'ellipse', required: true },
+              { id: 'float', label: 'Float Valve', icon: 'water', required: true },
+              { id: 'newBowl', label: 'Entire New Bowl', icon: 'cube', required: false },
+              { id: 'newTank', label: 'Entire New Tank', icon: 'cube-outline', required: false },
+              { id: 'chain', label: 'Flapper Chain', icon: 'link', required: false },
+            ],
+            successMessage: 'Fixed it! A worn flapper and a mis-set float valve were the only real problems — no need to replace anything else.',
+            failureMessage: 'Not quite — that combination either misses a required part or replaces something that was already working fine.',
+          },
+        },
+        // --- Knowledge Check: existing activity types, unchanged ---
+        { id: 'phy1_a2', type: 'trueFalse', difficulty: 1,
+          question: 'The bent pipe (trap) under a toilet bowl is there to stop sewer smells from coming back up.',
+          hint: 'Think about what keeps water sitting in the bowl at all times.',
+          options: ['True', 'False'], correctAnswer: 'True' },
+        { id: 'phy1_a3', type: 'multipleChoice', difficulty: 2,
+          question: 'What actually pulls the water and waste out of the bowl during a flush?',
+          hint: 'It happens once water fills the whole bent pipe.',
+          options: ['The flapper falling', 'A siphon effect', 'The tank refilling', 'Water pressure from the tap'],
+          correctAnswer: 'A siphon effect' },
+        { id: 'phy1_a4', type: 'fillBlank', difficulty: 2,
+          question: 'A siphon starts once water completely fills the ___ pipe, making it act like a straw.',
+          hint: 'It\'s the bent pipe under the bowl that always holds some water.',
+          options: ['trap', 'tank', 'handle', 'valve'], correctAnswer: 'trap' },
+        { id: 'phy1_a5', type: 'multipleChoice', difficulty: 2,
+          question: 'What does the float valve control?',
+          hint: 'Think about what you just dragged in the simulation.',
+          options: ['When the toilet flushes', 'How much water refills the tank', 'The color of the water', 'The bowl temperature'],
+          correctAnswer: 'How much water refills the tank' },
+        // --- Real World Application: guided discovery closing the lesson ---
+        {
+          id: 'phy1_real_world', type: 'guidedDiscovery', difficulty: 1,
+          question: 'This exact float-valve idea shows up far beyond your bathroom. Tap each card.',
+          hint: '',
+          options: [], correctAnswer: 'explored',
+          guidedDiscoveryConfig: {
+            intro: 'The float valve is one of the simplest, most widely copied water-conservation inventions ever made.',
+            facts: [
+              { id: 'r1', icon: 'car', title: 'Carburetors', detail: 'Old car engines used the exact same float-valve idea to control fuel level in the carburetor bowl.' },
+              { id: 'r2', icon: 'leaf', title: 'Water Conservation', detail: 'Modern low-flow toilets use precisely tuned float valves and flapper timing to use up to 80% less water per flush than older models.' },
+              { id: 'r3', icon: 'business', title: 'Water Towers (next lesson!)', detail: 'The same gravity + float-valve principles scale up to control levels in giant municipal water towers.' },
+            ],
+          },
+        },
+      ],
+    },
+    {
+      id: 'phy_2', title: 'Water Towers', xp: 70,
+      prerequisiteLessonId: 'phy_1',
+      badgeName: 'Pressure Pro', badgeIcon: '🗼',
+      objective: 'See how height creates water pressure without any pumps.',
+      explanation: 'Water towers store water high above the ground. Gravity pulls that water down through the pipes, and the taller the tower, the harder gravity pushes — creating more pressure. That\'s why a full tank up high can supply water to an entire neighbourhood all day, using almost no extra energy: the height itself does the work.',
+      activities: [
+        {
+          id: 'phy2_explore', type: 'explorable', difficulty: 2,
+          question: 'Raise the water tower and watch what happens to the water pressure below.',
+          hint: 'Keep raising it — taller towers push water out harder and farther.',
+          options: [], correctAnswer: 'explored',
+          explorableConfig: {
+            scene: 'waterTower',
+            sliderLabel: 'Raise the tower\'s height',
+            completionThreshold: 90,
+            thresholds: [
+              { at: 0, message: 'This tower is barely off the ground. Water needs pressure to travel through pipes — right now there\'s almost none.' },
+              { at: 30, message: 'As the tower gets taller, gravity pulls the water down through the pipes harder, building up pressure.' },
+              { at: 55, message: 'Now there\'s enough pressure to reach taps on the top floor of a tall building!' },
+              { at: 80, message: 'Tall enough! This is why real water towers are built so high — one full tank can supply a whole town using gravity alone.' },
+              { at: 92, message: 'Maximum pressure — see how much farther and higher the water sprays now compared to when the tower was short?' },
+            ],
+          },
+        },
+        { id: 'phy2_a2', type: 'multipleChoice', difficulty: 2,
+          question: 'Why are water towers built so tall?',
+          hint: 'Think about what pulls water down through pipes.',
+          options: ['To look impressive', 'Height creates water pressure', 'To collect rain', 'To keep water cold'],
+          correctAnswer: 'Height creates water pressure' },
+        { id: 'phy2_a3', type: 'trueFalse', difficulty: 1,
+          question: 'A taller water tower produces LESS water pressure at the ground than a short one.',
+          hint: 'Does gravity pull harder or softer from higher up?',
+          options: ['True', 'False'], correctAnswer: 'False' },
+        { id: 'phy2_a4', type: 'fillBlank', difficulty: 2,
+          question: 'Water towers use ___ instead of constantly running pumps to push water through pipes.',
+          hint: 'The force that pulls everything toward the ground.',
+          options: ['gravity', 'electricity', 'wind', 'heat'], correctAnswer: 'gravity' },
+      ],
+    },
+    {
+      id: 'phy_3', title: 'Refrigerators', xp: 75,
+      prerequisiteLessonId: 'phy_2',
+      badgeName: 'Cool Engineer', badgeIcon: '🧊',
+      objective: 'Learn that fridges move heat out instead of making cold.',
+      explanation: 'A fridge doesn\'t create cold — it moves heat from the inside to the outside. A compressor squeezes a special coolant into a hot liquid, which releases heat through coils on the back of the fridge. That liquid then expands back into a cold gas inside the fridge, soaking up heat from your food. The cycle repeats, over and over, moving heat out one small trip at a time.',
+      activities: [
+        {
+          id: 'phy3_explore', type: 'explorable', difficulty: 2,
+          question: 'Turn up the compressor and watch heat get pumped out of the fridge.',
+          hint: 'Watch both thermometers — one drops while the other rises.',
+          options: [], correctAnswer: 'explored',
+          explorableConfig: {
+            scene: 'fridge',
+            sliderLabel: 'Speed up the compressor',
+            completionThreshold: 90,
+            thresholds: [
+              { at: 0, message: 'The compressor is off. Without it pumping coolant around, the fridge slowly warms up to room temperature.' },
+              { at: 28, message: 'The compressor kicks on, squeezing coolant gas until it turns into a hot liquid — releasing heat through the coils on the back.' },
+              { at: 55, message: 'That hot liquid cools and flows inside, where it suddenly expands back into a cold gas — this is what actually chills your food.' },
+              { at: 78, message: 'Cycle complete: the cold gas soaks up heat from inside, gets pumped back to the compressor, and repeats. The fridge isn\'t making cold — it\'s moving heat OUT.' },
+              { at: 92, message: 'Maximum cooling! Notice the inside gets colder while the coils on the back get warmer — that heat has to go somewhere.' },
+            ],
+          },
+        },
+        { id: 'phy3_a2', type: 'trueFalse', difficulty: 2,
+          question: 'A fridge works by creating "cold" and pumping it inside.',
+          hint: 'Which direction does the heat actually travel — in, or out?',
+          options: ['True', 'False'], correctAnswer: 'False' },
+        { id: 'phy3_a3', type: 'multipleChoice', difficulty: 2,
+          question: 'What happens to the coils on the BACK of a fridge while it\'s running?',
+          hint: 'That heat from inside has to go somewhere.',
+          options: ['They get colder', 'They get warmer', 'Nothing changes', 'They freeze'],
+          correctAnswer: 'They get warmer' },
+        { id: 'phy3_a4', type: 'fillBlank', difficulty: 2,
+          question: 'A refrigerator moves ___ from inside the fridge to the outside air.',
+          hint: 'It is not "cold" being created — it is the opposite being removed.',
+          options: ['heat', 'cold', 'water', 'air'], correctAnswer: 'heat' },
+      ],
+    },
+    {
+      id: 'phy_4', title: 'Helicopter Toy', xp: 75,
+      prerequisiteLessonId: 'phy_3',
+      badgeName: 'Lift Master', badgeIcon: '🚁',
+      objective: 'Discover how spinning blades create enough lift to fly.',
+      explanation: 'A helicopter\'s blades are angled like tiny wings. As they spin, they push air downward — and for every push, the air pushes back just as hard in the opposite direction (that\'s one of Newton\'s laws in action). Spin the blades fast enough, and that upward push, called lift, becomes stronger than gravity pulling the helicopter down. That\'s the moment it lifts off the ground.',
+      activities: [
+        {
+          id: 'phy4_explore', type: 'explorable', difficulty: 2,
+          question: 'Spin the rotor blades faster and watch the helicopter take off.',
+          hint: 'The helicopter needs enough spin speed before lift beats gravity.',
+          options: [], correctAnswer: 'explored',
+          explorableConfig: {
+            scene: 'helicopter',
+            sliderLabel: 'Spin the rotor blades',
+            completionThreshold: 90,
+            thresholds: [
+              { at: 0, message: 'The blades are still. Gravity is the only force acting on the helicopter — it stays firmly on the ground.' },
+              { at: 32, message: 'Spinning faster now — the angled blades are pushing air downward, but not enough yet to lift the helicopter\'s weight.' },
+              { at: 58, message: 'Getting close! The faster the blades spin, the more air they push down every second, and the harder that air pushes back up.' },
+              { at: 78, message: 'LIFTOFF! Once the upward push (lift) beats the helicopter\'s weight, it rises. NASA\'s Mars helicopter, Ingenuity, uses this exact idea.' },
+              { at: 92, message: 'Full speed — maximum lift. Real helicopters fly the same way, just with much bigger blades and engines.' },
+            ],
+          },
+        },
+        { id: 'phy4_a2', type: 'multipleChoice', difficulty: 2,
+          question: 'What force do spinning helicopter blades create that fights against gravity?',
+          hint: 'It is the upward push created by pushing air downward.',
+          options: ['Lift', 'Drag', 'Friction', 'Magnetism'],
+          correctAnswer: 'Lift' },
+        { id: 'phy4_a3', type: 'trueFalse', difficulty: 1,
+          question: 'A helicopter lifts off the moment its lift force is greater than its weight.',
+          hint: 'Think about what "winning" the tug-of-war between forces would mean.',
+          options: ['True', 'False'], correctAnswer: 'True' },
+        { id: 'phy4_a4', type: 'fillBlank', difficulty: 2,
+          question: 'Helicopter blades push air ___, and the air pushes back up on the blades.',
+          hint: 'Which direction does the spinning blade force the air?',
+          options: ['downward', 'upward', 'sideways', 'nowhere'], correctAnswer: 'downward' },
+      ],
+    },
+    {
+      id: 'phy_5', title: 'Water Contamination', xp: 80,
+      prerequisiteLessonId: 'phy_4',
+      badgeName: 'Filtration Expert', badgeIcon: '💧',
+      objective: 'Explore how filter pore size determines what stays out of drinking water.',
+      explanation: 'Water filters work like very fine strainers. A coarse filter only catches big things like leaves and sand. A finer filter can catch smaller debris, and a very fine one (like the membranes used in reverse osmosis) can even block bacteria and tiny dissolved particles. The finer the filter, the cleaner the water — but also the more it costs to build and run.',
+      activities: [
+        {
+          id: 'phy5_explore', type: 'explorable', difficulty: 2,
+          question: 'Make the filter finer and watch what gets blocked at each stage.',
+          hint: 'Keep going finer — smaller and smaller things get stopped.',
+          options: [], correctAnswer: 'explored',
+          explorableConfig: {
+            scene: 'contamination',
+            sliderLabel: 'Make the filter finer',
+            completionThreshold: 90,
+            thresholds: [
+              { at: 0, message: 'This filter has big gaps — like a kitchen strainer. It only stops large chunks like leaves and sand; everything else flows straight through.' },
+              { at: 28, message: 'A finer mesh now blocks smaller debris too, but bacteria and viruses are far too tiny to be stopped by cloth or sand alone.' },
+              { at: 52, message: 'This is roughly how a household carbon filter works — it removes chlorine taste, sediment, and some chemicals, but not everything.' },
+              { at: 78, message: 'Very fine filtration (like reverse osmosis membranes) can block bacteria and even many dissolved salts — this is how ships turn seawater into drinking water.' },
+              { at: 92, message: 'At this level almost nothing gets through except water molecules themselves — the water looks completely clear now.' },
+            ],
+          },
+        },
+        { id: 'phy5_a2', type: 'multipleChoice', difficulty: 3,
+          question: 'Why can\'t a simple cloth or sand filter remove bacteria from water?',
+          hint: 'Compare the size of bacteria to the size of the gaps in cloth or sand.',
+          options: ['Bacteria are too small to be caught', 'Bacteria are magnetic', 'Bacteria float above water', 'Cloth repels bacteria'],
+          correctAnswer: 'Bacteria are too small to be caught' },
+        { id: 'phy5_a3', type: 'trueFalse', difficulty: 2,
+          question: 'Water that looks clear is always guaranteed to be free of harmful bacteria.',
+          hint: 'Can something be invisible to the eye but still present in the water?',
+          options: ['True', 'False'], correctAnswer: 'False' },
+        { id: 'phy5_a4', type: 'fillBlank', difficulty: 2,
+          question: 'The finer a filter\'s pores, the ___ particles it can block from passing through.',
+          hint: 'A finer mesh catches things that a coarse one would miss.',
+          options: ['smaller', 'larger', 'heavier', 'faster'], correctAnswer: 'smaller' },
+      ],
+    },
+  ],
+};
+
 export const MATH_SUBJECT: Subject = {
   id: 'math', title: 'Mathematics', color: '#3B82F6', iconName: 'calculator',
   topics: [mathCounting, mathAddition, mathSubtraction, mathShapes],
@@ -795,7 +1323,12 @@ export const ENGLISH_SUBJECT: Subject = {
   topics: [englishAlphabet, englishPhonics, englishVocabulary, englishGrammar],
 };
 
-export const SUBJECTS: Subject[] = [MATH_SUBJECT, ENGLISH_SUBJECT];
+export const PHYSICS_SUBJECT: Subject = {
+  id: 'physics', title: 'Physics of the Everyday', color: '#22D3EE', iconName: 'flask',
+  topics: [householdPhysics],
+};
+
+export const SUBJECTS: Subject[] = [MATH_SUBJECT, ENGLISH_SUBJECT, PHYSICS_SUBJECT];
 
 export function getTopicById(topicId: string): Topic | undefined {
   for (const subject of SUBJECTS) {
