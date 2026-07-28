@@ -7,7 +7,22 @@ export type ActivityType =
   | 'numberLine'
   | 'trueFalse'
   | 'writing'
-  | 'explorable';
+  | 'explorable'
+  | 'interactiveSimulation'
+  | 'interactiveDiagram'
+  | 'parameterExperiment'
+  | 'buildChallenge'
+  | 'causeEffectExplorer'
+  | 'systemBuilder'
+  | 'physicsPlayground'
+  | 'animatedProcess'
+  | 'guidedDiscovery'
+  | 'predictionChallenge'
+  | 'interactiveTimeline'
+  | 'hotspotExplorer'
+  | 'measurementTool'
+  | 'dragMechanism'
+  | 'flowSimulation';
 
 export interface MatchPair {
   left: string;
@@ -36,6 +51,191 @@ export interface ExplorableConfig {
   completionThreshold?: number;
 }
 
+/*
+ * ---------------------------------------------------------------------
+ * Premium interactive activity engine — config types.
+ *
+ * These are subject-agnostic building blocks: a Physics lesson wires in
+ * float valves and refrigerant pressure, a future Biology lesson could wire
+ * in the exact same shapes with heart-rate/blood-oxygen parameters. Nothing
+ * below references any specific domain. Each config type corresponds to one
+ * reusable component under components/engine/ (see that folder's README
+ * comment in ActivityRenderer.tsx for the full kind -> component mapping).
+ * ---------------------------------------------------------------------
+ */
+
+/** A draggable numeric input driving a simulation (slider or dial). */
+export interface SimulationParameter {
+  id: string;
+  label: string;
+  unit?: string;
+  min: number;
+  max: number;
+  defaultValue?: number;
+  color?: string;
+}
+
+export type ReadoutKind = 'gauge' | 'thermometer';
+
+/**
+ * A live readout derived from a parameter's current value via a plain
+ * linear mapping (fromMin/fromMax -> toMin/toMax, optionally inverted).
+ * Kept declarative (no embedded functions) so data/learningData.ts stays
+ * pure, serializable curriculum data — consistent with every other config
+ * in this file (ExplorableConfig, etc). Linear mapping is enough to model
+ * "pressure rises with tower height" or "fridge inside temp falls as
+ * compressor speed rises" without needing arbitrary code in content data.
+ */
+export interface SimulationReadout {
+  id: string;
+  kind: ReadoutKind;
+  label: string;
+  unit?: string;
+  sourceParameterId: string;
+  /** value range of the readout itself, e.g. temperature -10..40 */
+  toMin: number;
+  toMax: number;
+  /** true = as the source parameter rises, this readout falls */
+  invert?: boolean;
+  color: string;
+}
+
+/**
+ * Drag one or more parameters, watch live readouts react. Powers
+ * `parameterExperiment`, and is reused (via components/engine/InteractiveSimulation.tsx
+ * and MeasurementTool.tsx aliases) for `interactiveSimulation`, `physicsPlayground`,
+ * and `measurementTool` — those three names describe the same interaction
+ * shape (drag a variable, observe a live measurement) so they share one
+ * battle-tested component instead of three near-duplicate implementations.
+ */
+export interface ParameterExperimentConfig {
+  parameters: SimulationParameter[];
+  readouts: SimulationReadout[];
+  /** scene key resolved to a renderer in components/engine's scene registry. */
+  sceneKey?: string;
+  /** narration key resolved to a narration-text function in the same registry. */
+  narrateKey?: string;
+  goalParameterId?: string;
+  goalThresholdPct?: number;
+}
+
+export interface CauseEffectStage {
+  id: string;
+  caption: string;
+  atMs: number;
+}
+
+/**
+ * Press a trigger, watch a chained sequence of effects animate through
+ * stages. Powers `causeEffectExplorer`, and is reused (via
+ * components/engine/FlowSimulation.tsx) for `animatedProcess`,
+ * `interactiveTimeline`, and `flowSimulation` — all four names describe a
+ * sequential, replayable "push button, watch it happen" demo.
+ */
+export interface CauseEffectExplorerConfig {
+  triggerLabel: string;
+  triggerIcon?: string;
+  stages: CauseEffectStage[];
+  totalDurationMs?: number;
+  /** scene key resolved to a renderer in components/engine. */
+  sceneKey: string;
+  completionLabel?: string;
+}
+
+/** A part available to place in a build/repair challenge. */
+export interface BuildPart {
+  id: string;
+  label: string;
+  icon?: string;
+  required: boolean;
+}
+
+/**
+ * Select the minimal correct set of parts to solve a goal. Powers
+ * `buildChallenge`, and is reused (via components/engine/SystemBuilder.tsx)
+ * for `systemBuilder` — assembling a system from parts is the same
+ * interaction as repairing something from parts.
+ */
+export interface BuildChallengeConfig {
+  prompt: string;
+  parts: BuildPart[];
+  successMessage: string;
+  failureMessage: string;
+}
+
+export interface DiscoveryFact {
+  id: string;
+  icon?: string;
+  title: string;
+  detail: string;
+}
+
+/**
+ * A short sequence of tap-to-reveal facts — used both as a bite-sized
+ * "small explanation" bridge between activities and as a lesson's closing
+ * "real world application" step. Powers `guidedDiscovery`.
+ */
+export interface GuidedDiscoveryConfig {
+  intro: string;
+  facts: DiscoveryFact[];
+}
+
+/** A labelled, positioned part in a diagram (0-100 coordinate space). */
+export interface DiagramHotspot {
+  id: string;
+  label: string;
+  x: number; // 0-100
+  y: number; // 0-100
+  icon?: string;
+  detail: string;
+}
+
+/**
+ * Tap labelled hotspots on a diagram to reveal what each part does. Powers
+ * `hotspotExplorer`, and is reused (via components/engine/AnimatedDiagram
+ * as its rendering surface) for `interactiveDiagram` — both names describe
+ * "explore a labelled diagram by tapping its parts."
+ */
+export interface HotspotExplorerConfig {
+  sceneKey: string;
+  hotspots: DiagramHotspot[];
+  /** fraction of hotspots (0-1) that must be viewed before completion unlocks. Default 1 (all). */
+  requiredViewFraction?: number;
+}
+
+export interface PredictionOption {
+  id: string;
+  label: string;
+}
+
+/**
+ * Predict-observe-explain: the learner commits to a guess before seeing the
+ * simulated outcome, then the actual result is revealed with a short
+ * explanation of why. Powers `predictionChallenge`.
+ */
+export interface PredictionChallengeConfig {
+  prompt: string;
+  options: PredictionOption[];
+  correctOptionId: string;
+  /** scene key rendered once the guess is locked in, showing the real outcome. */
+  sceneKey?: string;
+  explanation: string;
+}
+
+/**
+ * Drag a single mechanical part along a track and observe the effect —
+ * powers standalone `dragMechanism` activities (distinct from
+ * ParameterExperiment's slider, this is a physical part with a spring-back
+ * release for a "weighted" feel).
+ */
+export interface DragMechanismConfig {
+  title: string;
+  partIcon: string;
+  minLabel: string;
+  maxLabel: string;
+  describeKey: string;
+}
+
 export interface Activity {
   id: string;
   type: ActivityType;
@@ -48,6 +248,13 @@ export interface Activity {
   min?: number;
   max?: number;
   explorableConfig?: ExplorableConfig;
+  parameterExperimentConfig?: ParameterExperimentConfig;
+  causeEffectConfig?: CauseEffectExplorerConfig;
+  buildChallengeConfig?: BuildChallengeConfig;
+  guidedDiscoveryConfig?: GuidedDiscoveryConfig;
+  hotspotConfig?: HotspotExplorerConfig;
+  predictionConfig?: PredictionChallengeConfig;
+  dragMechanismConfig?: DragMechanismConfig;
 }
 
 export interface Lesson {
@@ -815,29 +1022,99 @@ const householdPhysics: Topic = {
   color: '#22D3EE', iconName: 'flask',
   lessons: [
     {
-      id: 'phy_1', title: 'Toilets', xp: 70,
+      id: 'phy_1', title: 'Toilets', xp: 110,
       badgeName: 'Siphon Scientist', badgeIcon: '🚽',
-      objective: 'Discover how a siphon makes a toilet flush.',
-      explanation: 'A toilet bowl always keeps some water in it, sealed by a bent pipe called a trap. Pushing the handle lifts a flapper and lets tank water rush into the bowl. Once enough water piles over the bend in the trap, the whole pipe fills up and starts acting like a straw — sucking the water (and whatever is in the bowl) down and away. That sudden "straw" effect is called a siphon.',
+      objective: 'Discover how gravity, pressure, and a siphon work together to flush a toilet — then repair one yourself.',
+      explanation: 'A toilet bowl always keeps some water in it, sealed by a bent pipe called a trap. Pushing the handle lifts a flapper and lets tank water rush into the bowl. Once enough water piles over the bend in the trap, the whole pipe fills up and starts acting like a straw — sucking the water (and whatever is in the bowl) down and away. That sudden "straw" effect is called a siphon. A second mechanism, the float valve, uses gravity and buoyancy to know exactly when to stop refilling the tank — conserving water instead of overflowing it.',
       activities: [
+        // --- Interactive Discovery: flush the toilet, watch the siphon fire ---
         {
-          id: 'phy1_explore', type: 'explorable', difficulty: 2,
-          question: 'Drag the handle to flush the toilet and watch the siphon take over.',
-          hint: 'Keep dragging past halfway — that\'s when the siphon effect kicks in.',
+          id: 'phy1_flush', type: 'causeEffectExplorer', difficulty: 2,
+          question: 'Press flush and watch gravity and pressure team up to create a siphon.',
+          hint: 'Watch the water level in the bowl rise, then suddenly disappear — that sudden drop is the siphon.',
           options: [], correctAnswer: 'explored',
-          explorableConfig: {
-            scene: 'toilet',
-            sliderLabel: 'Push the flush handle',
-            completionThreshold: 90,
-            thresholds: [
-              { at: 0, message: 'This is the toilet at rest. Water sits in the bowl, sealed by the trap — that seal stops sewer gas from coming up into your home.' },
-              { at: 22, message: 'You\'re pushing the handle... the flapper lifts and water starts rushing from the tank into the bowl.' },
-              { at: 50, message: 'The bowl is filling fast. Once the water goes over the top of the trap\'s bend, something interesting is about to happen...' },
-              { at: 75, message: 'SIPHON! The rushing water fills the whole trap pipe, and suddenly it acts like a straw — sucking everything down and out in one go.' },
-              { at: 92, message: 'Flush complete! As air enters the pipe the siphon breaks, the flapper drops, and the tank starts refilling for next time.' },
+          causeEffectConfig: {
+            triggerLabel: 'Press the flush handle',
+            triggerIcon: 'arrow-down-circle',
+            sceneKey: 'toiletFlush',
+            totalDurationMs: 2400,
+            completionLabel: 'I saw the siphon!',
+            stages: [
+              { id: 's1', atMs: 0, caption: 'At rest: gravity holds a resting pool of water in the bowl, sealed by the trap below it.' },
+              { id: 's2', atMs: 350, caption: 'The flapper lifts. Tank water pours into the bowl, pushed down by gravity.' },
+              { id: 's3', atMs: 1150, caption: 'The bowl fills past the top of the trap\'s bend — pressure is building inside that pipe.' },
+              { id: 's4', atMs: 1700, caption: 'SIPHON! The trap pipe is completely full of water, so it starts acting like a straw, pulling everything through in one continuous flow.' },
+              { id: 's5', atMs: 2150, caption: 'Air breaks the siphon, the flapper drops shut, and the float valve starts letting the tank refill.' },
             ],
           },
         },
+        // --- Small Explanation, tap-to-reveal (bridges discovery -> simulation) ---
+        {
+          id: 'phy1_facts', type: 'guidedDiscovery', difficulty: 1,
+          question: 'Two forces are doing all the work here. Tap each card to find out what they are.',
+          hint: '',
+          options: [], correctAnswer: 'explored',
+          guidedDiscoveryConfig: {
+            intro: 'Before you experiment with the float valve, meet the two physics ideas behind every flush.',
+            facts: [
+              { id: 'f1', icon: 'arrow-down', title: 'Gravity', detail: 'Gravity pulls tank water down into the bowl, and pulls bowl water down through the trap — no pump needed anywhere in the system.' },
+              { id: 'f2', icon: 'water', title: 'Pressure & the siphon', detail: 'Once the trap pipe is completely full, the weight of water on the long side creates enough pressure to pull everything through — that continuous pull is the siphon effect.' },
+            ],
+          },
+        },
+        // --- Simulation: drag the float valve, watch the tank respond ---
+        {
+          id: 'phy1_float_drag', type: 'dragMechanism', difficulty: 2,
+          question: 'Drag the float up and down and feel how it controls the water level.',
+          hint: 'A low float means an empty tank; a high float means a full one.',
+          options: [], correctAnswer: 'explored',
+          dragMechanismConfig: {
+            title: 'The Float Valve',
+            partIcon: 'water',
+            minLabel: 'Empty tank',
+            maxLabel: 'Full tank',
+            describeKey: 'floatValve',
+          },
+        },
+        // --- Experiment: parameter + live gauges (refill speed, pressure) ---
+        {
+          id: 'phy1_experiment', type: 'parameterExperiment', difficulty: 3,
+          question: 'Raise the float higher and watch what happens to refill speed and water pressure.',
+          hint: 'As the float rises, the valve closes — less water is flowing, so both readings should fall.',
+          options: [], correctAnswer: 'explored',
+          parameterExperimentConfig: {
+            sceneKey: 'toiletTank',
+            parameters: [
+              { id: 'floatHeight', label: 'Float height', unit: '%', min: 0, max: 100, defaultValue: 10, color: '#22D3EE' },
+            ],
+            readouts: [
+              { id: 'refillSpeed', kind: 'gauge', label: 'Refill Speed', sourceParameterId: 'floatHeight', toMin: 0, toMax: 100, invert: true, color: '#3D5AFE' },
+              { id: 'pressure', kind: 'gauge', label: 'Valve Pressure', sourceParameterId: 'floatHeight', toMin: 0, toMax: 100, invert: true, color: '#22D3EE' },
+            ],
+            goalParameterId: 'floatHeight',
+            goalThresholdPct: 90,
+          },
+        },
+        // --- Challenge: repair the leaking toilet with the fewest parts ---
+        {
+          id: 'phy1_repair', type: 'buildChallenge', difficulty: 3,
+          question: 'This toilet keeps running non-stop, wasting water. Pick only the parts you actually need to fix it.',
+          hint: 'A running toilet is almost always a worn flapper not sealing, or a float set too high.',
+          options: [], correctAnswer: 'repaired',
+          buildChallengeConfig: {
+            prompt: 'Select the parts required to repair a toilet that keeps running. Choosing extra unnecessary parts will fail the repair — real plumbers fix it with the fewest parts possible.',
+            parts: [
+              { id: 'flapper', label: 'New Flapper', icon: 'ellipse', required: true },
+              { id: 'float', label: 'Float Valve', icon: 'water', required: true },
+              { id: 'newBowl', label: 'Entire New Bowl', icon: 'cube', required: false },
+              { id: 'newTank', label: 'Entire New Tank', icon: 'cube-outline', required: false },
+              { id: 'chain', label: 'Flapper Chain', icon: 'link', required: false },
+            ],
+            successMessage: 'Fixed it! A worn flapper and a mis-set float valve were the only real problems — no need to replace anything else.',
+            failureMessage: 'Not quite — that combination either misses a required part or replaces something that was already working fine.',
+          },
+        },
+        // --- Knowledge Check: existing activity types, unchanged ---
         { id: 'phy1_a2', type: 'trueFalse', difficulty: 1,
           question: 'The bent pipe (trap) under a toilet bowl is there to stop sewer smells from coming back up.',
           hint: 'Think about what keeps water sitting in the bowl at all times.',
@@ -851,6 +1128,26 @@ const householdPhysics: Topic = {
           question: 'A siphon starts once water completely fills the ___ pipe, making it act like a straw.',
           hint: 'It\'s the bent pipe under the bowl that always holds some water.',
           options: ['trap', 'tank', 'handle', 'valve'], correctAnswer: 'trap' },
+        { id: 'phy1_a5', type: 'multipleChoice', difficulty: 2,
+          question: 'What does the float valve control?',
+          hint: 'Think about what you just dragged in the simulation.',
+          options: ['When the toilet flushes', 'How much water refills the tank', 'The color of the water', 'The bowl temperature'],
+          correctAnswer: 'How much water refills the tank' },
+        // --- Real World Application: guided discovery closing the lesson ---
+        {
+          id: 'phy1_real_world', type: 'guidedDiscovery', difficulty: 1,
+          question: 'This exact float-valve idea shows up far beyond your bathroom. Tap each card.',
+          hint: '',
+          options: [], correctAnswer: 'explored',
+          guidedDiscoveryConfig: {
+            intro: 'The float valve is one of the simplest, most widely copied water-conservation inventions ever made.',
+            facts: [
+              { id: 'r1', icon: 'car', title: 'Carburetors', detail: 'Old car engines used the exact same float-valve idea to control fuel level in the carburetor bowl.' },
+              { id: 'r2', icon: 'leaf', title: 'Water Conservation', detail: 'Modern low-flow toilets use precisely tuned float valves and flapper timing to use up to 80% less water per flush than older models.' },
+              { id: 'r3', icon: 'business', title: 'Water Towers (next lesson!)', detail: 'The same gravity + float-valve principles scale up to control levels in giant municipal water towers.' },
+            ],
+          },
+        },
       ],
     },
     {

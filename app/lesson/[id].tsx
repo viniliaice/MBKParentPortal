@@ -13,7 +13,7 @@ import CelebrationOverlay from '@/components/CelebrationOverlay';
 import AnimatedProgressBar from '@/components/AnimatedProgressBar';
 import { getLessonById, getTopicById } from '@/data/learningData';
 import { useApp } from '@/context/AppContext';
-import { getActivityTypeMeta } from '@/constants/activityTypes';
+import { getActivityTypeMeta, isExploreType } from '@/constants/activityTypes';
 import * as Haptics from 'expo-haptics';
 
 export default function LessonScreen() {
@@ -171,7 +171,7 @@ export default function LessonScreen() {
               <Animated.View style={[styles.activityContainer, { opacity: fadeAnim }]}>
                 <View style={styles.activityHeader}>
                   <Text style={styles.activityNum}>
-                    {currentActivity!.type === 'explorable' ? 'Explore' : 'Question'} {(step as number) + 1} of {activities.length}
+                    {isExploreType(currentActivity!.type) ? 'Explore' : 'Question'} {(step as number) + 1} of {activities.length}
                   </Text>
                   <View style={[styles.activityTypeBadge, { backgroundColor: `${topic.color}22`, borderColor: `${topic.color}44` }]}>
                     <Text style={[styles.activityTypeBadgeText, { color: topic.color }]}>{getActivityTypeMeta(currentActivity!.type).description}</Text>
@@ -185,6 +185,7 @@ export default function LessonScreen() {
                   activity={currentActivity!}
                   onCorrect={handleCorrect}
                   onIncorrect={handleIncorrect}
+                  accentColor={topic.color}
                 />
                 <TouchableOpacity
                   style={[styles.nextBtn, { backgroundColor: answeredCurrent ? topic.color : 'rgba(255,255,255,0.1)' }]}
