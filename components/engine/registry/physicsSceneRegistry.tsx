@@ -29,3 +29,13 @@ export const physicsDescribeRegistry: Record<string, (position: number) => strin
     return 'Tank full! The float has risen all the way, shutting the valve completely so no water overflows.';
   },
 };
+
+export const physicsNarrateRegistry: Record<string, (params: Record<string, number>) => string> = {
+  floatValveExperiment: (params) => {
+    const h = params.floatHeight ?? 0;
+    if (h < 15) return 'Notice both gauges are maxed out — an empty tank means the valve is wide open, letting water rush in as fast as possible.';
+    if (h < 50) return 'Watch closely: as you drag the float up, both the refill speed and the valve pressure fall together. They\'re controlled by the exact same mechanism.';
+    if (h < 85) return 'Almost there — the valve is nearly shut, so almost no water is flowing and pressure is nearly zero.';
+    return 'You found it: at full height the valve seals completely. Zero flow, zero pressure — this is exactly how a tank avoids overflowing without anyone watching it.';
+  },
+};

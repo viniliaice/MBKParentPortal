@@ -1030,8 +1030,8 @@ const householdPhysics: Topic = {
         // --- Interactive Discovery: flush the toilet, watch the siphon fire ---
         {
           id: 'phy1_flush', type: 'causeEffectExplorer', difficulty: 2,
-          question: 'Press flush and watch gravity and pressure team up to create a siphon.',
-          hint: 'Watch the water level in the bowl rise, then suddenly disappear — that sudden drop is the siphon.',
+          question: 'Press flush. Watch closely — something surprising happens to the water.',
+          hint: 'Keep an eye on the bowl. The water level does something you might not expect right before it disappears.',
           options: [], correctAnswer: 'explored',
           causeEffectConfig: {
             triggerLabel: 'Press the flush handle',
@@ -1084,6 +1084,7 @@ const householdPhysics: Topic = {
           options: [], correctAnswer: 'explored',
           parameterExperimentConfig: {
             sceneKey: 'toiletTank',
+            narrateKey: 'floatValveExperiment',
             parameters: [
               { id: 'floatHeight', label: 'Float height', unit: '%', min: 0, max: 100, defaultValue: 10, color: '#22D3EE' },
             ],

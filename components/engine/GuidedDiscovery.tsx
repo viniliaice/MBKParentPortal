@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { useAnimatedStyle, withSpring } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming, withDelay } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import type { GuidedDiscoveryConfig } from '@/data/learningData';
 
@@ -18,9 +18,19 @@ interface Props {
  * of prose (per the "museum, not textbook" brief). Reusable for any subject:
  * a Biology lesson's "did you know?" facts about a body system would use
  * the exact same component.
+ *
+ * Juice pass: cards slide/fade in staggered on mount (never appear all at
+ * once), flip open with a satisfying icon spin + expand instead of a plain
+ * scale, and the whole intro text gently fades in first so the screen never
+ * pops fully-formed on entry.
  */
 export default function GuidedDiscovery({ config, submitted, onComplete, accentColor }: Props) {
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
+  const introAnim = useSharedValue(0);
+
+  useEffect(() => {
+    introAnim.value = withTiming(1, { duration: 350 });
+  }, []);
 
   const reveal = (id: string) => {
     if (revealed.has(id)) return;
@@ -36,14 +46,20 @@ export default function GuidedDiscovery({ config, submitted, onComplete, accentC
     onComplete(true);
   };
 
+  const introStyle = useAnimatedStyle(() => ({
+    opacity: introAnim.value,
+    transform: [{ translateY: (1 - introAnim.value) * 6 }],
+  }));
+
   return (
     <View style={styles.container}>
-      <Text style={styles.intro}>{config.intro}</Text>
+      <Animated.Text style={[styles.intro, introStyle]}>{config.intro}</Animated.Text>
 
       <View style={styles.factsStack}>
-        {config.facts.map(fact => (
+        {config.facts.map((fact, i) => (
           <FactCard
             key={fact.id}
+            index={i}
             title={fact.title}
             detail={fact.detail}
             icon={fact.icon}
@@ -71,37 +87,63 @@ export default function GuidedDiscovery({ config, submitted, onComplete, accentC
   );
 }
 
-function FactCard({ title, detail, icon, revealed, onPress, accentColor }: {
-  title: string; detail: string; icon?: string; revealed: boolean; onPress: () => void; accentColor: string;
+function FactCard({ index, title, detail, icon, revealed, onPress, accentColor }: {
+  index: number; title: string; detail: string; icon?: string; revealed: boolean; onPress: () => void; accentColor: string;
 }) {
-  const flip = useAnimatedStyle(() => ({
-    transform: [{ scale: withSpring(revealed ? 1 : 0.98, { damping: 14 }) }],
+  const entrance = useSharedValue(0);
+  const reveal = useSharedValue(0);
+  const iconSpin = useSharedValue(0);
+
+  useEffect(() => {
+    entrance.value = withDelay(index * 90, withSpring(1, { damping: 13, stiffness: 140 }));
+  }, []);
+
+  useEffect(() => {
+    reveal.value = withSpring(revealed ? 1 : 0, { damping: 12, stiffness: 160 });
+    if (revealed) {
+      iconSpin.value = withSpring(1, { damping: 8, stiffness: 140 });
+    }
+  }, [revealed]);
+
+  const entranceStyle = useAnimatedStyle(() => ({
+    opacity: entrance.value,
+    transform: [{ translateY: (1 - entrance.value) * 24 }, { scale: 0.92 + entrance.value * 0.08 }],
+  }));
+
+  const cardStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: 0.97 + reveal.value * 0.03 }],
+  }));
+
+  const iconStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${iconSpin.value * 360}deg` }, { scale: 1 + reveal.value * 0.1 }],
   }));
 
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.85} disabled={revealed}>
-      <Animated.View
-        style={[
-          styles.card,
-          flip,
-          revealed
-            ? { borderColor: `${accentColor}55`, backgroundColor: `${accentColor}14` }
-            : styles.cardHidden,
-        ]}
-      >
-        <View style={[styles.cardIcon, { backgroundColor: `${accentColor}22` }]}>
-          <Ionicons name={(icon ?? (revealed ? 'checkmark-circle' : 'help-circle')) as any} size={20} color={accentColor} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.cardTitle}>{title}</Text>
-          {revealed ? (
-            <Text style={styles.cardDetail}>{detail}</Text>
-          ) : (
-            <Text style={styles.cardTapHint}>Tap to reveal</Text>
-          )}
-        </View>
-      </Animated.View>
-    </TouchableOpacity>
+    <Animated.View style={entranceStyle}>
+      <TouchableOpacity onPress={onPress} activeOpacity={0.85} disabled={revealed}>
+        <Animated.View
+          style={[
+            styles.card,
+            cardStyle,
+            revealed
+              ? { borderColor: `${accentColor}55`, backgroundColor: `${accentColor}14`, shadowColor: accentColor, shadowOpacity: 0.25, shadowRadius: 8, elevation: 3 }
+              : styles.cardHidden,
+          ]}
+        >
+          <Animated.View style={[styles.cardIcon, iconStyle, { backgroundColor: `${accentColor}22` }]}>
+            <Ionicons name={(icon ?? (revealed ? 'checkmark-circle' : 'help-circle')) as any} size={20} color={accentColor} />
+          </Animated.View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardTitle}>{title}</Text>
+            {revealed ? (
+              <Text style={styles.cardDetail}>{detail}</Text>
+            ) : (
+              <Text style={styles.cardTapHint}>Tap to reveal</Text>
+            )}
+          </View>
+        </Animated.View>
+      </TouchableOpacity>
+    </Animated.View>
   );
 }
 

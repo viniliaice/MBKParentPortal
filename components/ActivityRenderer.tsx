@@ -14,8 +14,9 @@ import GuidedDiscovery from '@/components/engine/GuidedDiscovery';
 import HotspotExplorer from '@/components/engine/HotspotExplorer';
 import PredictionChallenge from '@/components/engine/PredictionChallenge';
 import EngineDragMechanism from '@/components/engine/DragMechanism';
+import SuccessCelebration from '@/components/engine/primitives/SuccessCelebration';
 import {
-  physicsSceneRegistry, physicsTankSceneRegistry, physicsDescribeRegistry,
+  physicsSceneRegistry, physicsTankSceneRegistry, physicsDescribeRegistry, physicsNarrateRegistry,
 } from '@/components/engine/registry/physicsSceneRegistry';
 import { isExploreType } from '@/constants/activityTypes';
 
@@ -68,12 +69,14 @@ export default function ActivityRenderer({ activity, onCorrect, onIncorrect, acc
   const [submitted, setSubmitted] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
   const [dragMechanismInteracted, setDragMechanismInteracted] = useState(false);
+  const [celebrationTrigger, setCelebrationTrigger] = useState(0);
 
   const handleResult = (correct: boolean) => {
     setSubmitted(true);
     setIsCorrect(correct);
     if (correct) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setCelebrationTrigger(n => n + 1);
       onCorrect();
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -82,9 +85,19 @@ export default function ActivityRenderer({ activity, onCorrect, onIncorrect, acc
   };
 
   const feedbackAnim = useRef(new Animated.Value(0)).current;
+  const shakeAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     if (submitted) {
       Animated.spring(feedbackAnim, { toValue: 1, friction: 6, tension: 100, useNativeDriver: true }).start();
+      if (!isCorrect) {
+        shakeAnim.setValue(0);
+        Animated.sequence([
+          Animated.timing(shakeAnim, { toValue: 1, duration: 60, useNativeDriver: true }),
+          Animated.timing(shakeAnim, { toValue: -1, duration: 80, useNativeDriver: true }),
+          Animated.timing(shakeAnim, { toValue: 0.6, duration: 80, useNativeDriver: true }),
+          Animated.timing(shakeAnim, { toValue: 0, duration: 80, useNativeDriver: true }),
+        ]).start();
+      }
     } else {
       feedbackAnim.setValue(0);
     }
@@ -119,6 +132,9 @@ export default function ActivityRenderer({ activity, onCorrect, onIncorrect, acc
             accentColor={accentColor}
             renderScene={activity.parameterExperimentConfig.sceneKey
               ? (params) => physicsTankSceneRegistry[activity.parameterExperimentConfig!.sceneKey!]?.(params, accentColor)
+              : undefined}
+            narrate={activity.parameterExperimentConfig.narrateKey
+              ? (params) => physicsNarrateRegistry[activity.parameterExperimentConfig!.narrateKey!]?.(params) ?? ''
               : undefined}
           />
         )
@@ -178,8 +194,24 @@ export default function ActivityRenderer({ activity, onCorrect, onIncorrect, acc
       )}
 
       {submitted && (
-        <Animated.View style={[styles.feedback, isCorrect ? styles.feedbackCorrect : styles.feedbackWrong, { opacity: feedbackAnim, transform: [{ scale: feedbackAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }] }]}>
-          <Ionicons name={isCorrect ? 'checkmark-circle' : 'close-circle'} size={22} color={isCorrect ? '#2ECC71' : '#FF5370'} />
+        <Animated.View
+          style={[
+            styles.feedback,
+            isCorrect ? styles.feedbackCorrect : styles.feedbackWrong,
+            {
+              opacity: feedbackAnim,
+              transform: [
+                { scale: feedbackAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) },
+                { translateX: shakeAnim.interpolate({ inputRange: [-1, 1], outputRange: [-8, 8] }) },
+              ],
+            },
+          ]}
+        >
+          {isCorrect ? (
+            <SuccessCelebration trigger={celebrationTrigger} size={22} />
+          ) : (
+            <Ionicons name="close-circle" size={22} color="#FF5370" />
+          )}
           <Text style={[styles.feedbackText, { color: isCorrect ? '#2ECC71' : '#FF5370' }]}>
             {isCorrect ? (isEngineNoAnswerType ? 'Nice exploring!' : 'Correct!') : `The answer is: ${activity.correctAnswer}`}
           </Text>

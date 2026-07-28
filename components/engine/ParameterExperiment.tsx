@@ -1,10 +1,12 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSpring, Easing } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import DraggableControl from '@/components/engine/primitives/DraggableControl';
 import GaugeMeter from '@/components/engine/primitives/GaugeMeter';
 import TemperatureIndicator from '@/components/engine/primitives/TemperatureIndicator';
+import AnimatedProgressBar from '@/components/AnimatedProgressBar';
 import type { ParameterExperimentConfig } from '@/data/learningData';
 
 interface Props {
@@ -85,10 +87,7 @@ export default function ParameterExperiment({ config, submitted, onComplete, acc
       )}
 
       {narrate && (
-        <View style={[styles.narrateBox, { borderColor: `${accentColor}44` }]}>
-          <Ionicons name="bulb" size={16} color={accentColor} />
-          <Text style={styles.narrateText}>{narrate(values)}</Text>
-        </View>
+        <NarrateBox text={narrate(values)} accentColor={accentColor} />
       )}
 
       <View style={styles.controlsStack}>
@@ -108,9 +107,12 @@ export default function ParameterExperiment({ config, submitted, onComplete, acc
 
       {goalParam && !submitted && (
         <View style={styles.goalProgressRow}>
-          <View style={styles.goalTrack}>
-            <View style={[styles.goalFill, { width: `${Math.min(100, (maxGoalPct / goalThreshold) * 100)}%`, backgroundColor: accentColor }]} />
-          </View>
+          <AnimatedProgressBar
+            progress={Math.min(100, (maxGoalPct / goalThreshold) * 100)}
+            color={accentColor}
+            height={4}
+            trackColor="rgba(255,255,255,0.08)"
+          />
           <Text style={styles.goalLabel}>
             {hasReachedGoal ? 'Goal reached' : `Push ${goalParam.label.toLowerCase()} further`}
           </Text>
@@ -118,19 +120,50 @@ export default function ParameterExperiment({ config, submitted, onComplete, acc
       )}
 
       {!submitted && (
-        <TouchableOpacity
-          style={[styles.completeBtn, { backgroundColor: hasReachedGoal ? accentColor : 'rgba(255,255,255,0.08)' }]}
-          onPress={handleComplete}
-          disabled={!hasReachedGoal}
-          activeOpacity={0.85}
-        >
-          <Text style={[styles.completeBtnText, !hasReachedGoal && styles.completeBtnTextDisabled]}>
-            {hasReachedGoal ? 'Got it!' : 'Keep experimenting'}
-          </Text>
-          {hasReachedGoal && <Ionicons name="checkmark" size={18} color="#04222A" />}
-        </TouchableOpacity>
+        <CompleteButton enabled={hasReachedGoal} onPress={handleComplete} accentColor={accentColor} />
       )}
     </View>
+  );
+}
+
+function NarrateBox({ text, accentColor }: { text: string; accentColor: string }) {
+  const anim = useSharedValue(0);
+  useEffect(() => {
+    anim.value = 0;
+    anim.value = withTiming(1, { duration: 220, easing: Easing.out(Easing.cubic) });
+  }, [text]);
+
+  const style = useAnimatedStyle(() => ({
+    opacity: anim.value,
+    transform: [{ translateY: (1 - anim.value) * 4 }],
+  }));
+
+  return (
+    <View style={[styles.narrateBox, { borderColor: `${accentColor}44` }]}>
+      <Ionicons name="bulb" size={16} color={accentColor} />
+      <Animated.Text style={[styles.narrateText, style]}>{text}</Animated.Text>
+    </View>
+  );
+}
+
+function CompleteButton({ enabled, onPress, accentColor }: { enabled: boolean; onPress: () => void; accentColor: string }) {
+  const scale = useSharedValue(1);
+  return (
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <TouchableOpacity
+        style={[styles.completeBtn, { backgroundColor: enabled ? accentColor : 'rgba(255,255,255,0.08)' }]}
+        onPress={onPress}
+        onPressIn={() => { if (enabled) scale.value = withSpring(0.96, { damping: 14, stiffness: 300 }); }}
+        onPressOut={() => { scale.value = withSpring(1, { damping: 10, stiffness: 280 }); }}
+        disabled={!enabled}
+        activeOpacity={1}
+      >
+        <Text style={[styles.completeBtnText, !enabled && styles.completeBtnTextDisabled]}>
+          {enabled ? 'Got it!' : 'Keep experimenting'}
+        </Text>
+        {enabled && <Ionicons name="checkmark" size={18} color="#04222A" />}
+      </TouchableOpacity>
+    </Animated.View>
   );
 }
 
@@ -148,8 +181,6 @@ const styles = StyleSheet.create({
   narrateText: { flex: 1, fontSize: 13.5, color: '#E5F9FF', lineHeight: 20 },
   controlsStack: { gap: 18 },
   goalProgressRow: { gap: 6 },
-  goalTrack: { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.08)' },
-  goalFill: { height: 4, borderRadius: 2 },
   goalLabel: { fontSize: 11, color: '#8892B0' },
   completeBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
