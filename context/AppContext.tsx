@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, type SupabaseStudent, type SupabaseExam, type SupabaseAnnouncement, type SupabaseMessage, type SupabaseLessonProgress, type SupabaseLessonAttempt, type SupabaseGamification } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import type { HomeworkItem, AttendanceRecord, AppMessage } from '@/data/mockData';
-import { computeMasteryLevel, nextSrsDueDate } from '@/lib/mastery';
+import { computeMasteryLevel, nextSrsDueDate, localDateStr } from '@/lib/mastery';
 
 export type AttemptSummary = { accuracyPct: number; completedAt: string | null };
 
@@ -14,13 +14,6 @@ const DEFAULT_GAMIFICATION: GamificationState = {
   currentStreak: 0, longestStreak: 0, lastLessonDate: null,
   level: 1, totalXPEarned: 0, dailyRewardClaimed: false, dailyRewardDate: null,
 };
-
-function localDateStr(d = new Date()): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
 
 interface GamificationState {
   currentStreak: number;

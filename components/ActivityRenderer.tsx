@@ -5,6 +5,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Activity } from '@/data/learningData';
+import PressableTile from '@/components/PressableTile';
+import ExplorableActivity from '@/components/explorables/ExplorableActivity';
 
 interface Props {
   activity: Activity;
@@ -53,18 +55,20 @@ export default function ActivityRenderer({ activity, onCorrect, onIncorrect }: P
         ? <TrueFalseActivity activity={activity} submitted={submitted} onSubmit={handleResult} />
         : activity.type === 'writing'
         ? <WritingActivity activity={activity} submitted={submitted} onSubmit={handleResult} />
+        : activity.type === 'explorable'
+        ? <ExplorableActivity activity={activity} submitted={submitted} onSubmit={handleResult} />
         : null}
 
       {submitted && (
         <Animated.View style={[styles.feedback, isCorrect ? styles.feedbackCorrect : styles.feedbackWrong, { opacity: feedbackAnim, transform: [{ scale: feedbackAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }] }]}>
           <Ionicons name={isCorrect ? 'checkmark-circle' : 'close-circle'} size={22} color={isCorrect ? '#2ECC71' : '#FF5370'} />
           <Text style={[styles.feedbackText, { color: isCorrect ? '#2ECC71' : '#FF5370' }]}>
-            {isCorrect ? 'Correct!' : `The answer is: ${activity.correctAnswer}`}
+            {isCorrect ? (activity.type === 'explorable' ? 'Nice exploring!' : 'Correct!') : `The answer is: ${activity.correctAnswer}`}
           </Text>
         </Animated.View>
       )}
 
-      {!submitted && activity.hint ? (
+      {!submitted && activity.hint && activity.type !== 'explorable' ? (
         <HintButton hint={activity.hint} />
       ) : null}
     </View>
@@ -92,14 +96,14 @@ function MultiChoiceActivity({ activity, submitted, onSubmit }: {
         if (submitted && opt === correct) { bg = 'rgba(46,204,113,0.18)'; border = '#2ECC71'; }
         else if (submitted && isSelected && opt !== correct) { bg = 'rgba(255,83,112,0.18)'; border = '#FF5370'; }
         return (
-          <TouchableOpacity
+          <PressableTile
             key={opt}
             style={[styles.optionBtn, { backgroundColor: bg, borderColor: border }]}
             onPress={() => tap(opt)}
-            activeOpacity={0.7}
+            disabled={submitted}
           >
             <Text style={styles.optionText}>{opt}</Text>
-          </TouchableOpacity>
+          </PressableTile>
         );
       })}
     </View>
@@ -141,14 +145,14 @@ function FillBlankActivity({ activity, submitted, onSubmit }: {
           if (submitted && opt === correct) { bg = 'rgba(46,204,113,0.18)'; border = '#2ECC71'; }
           else if (submitted && isSelected && opt !== correct) { bg = 'rgba(255,83,112,0.18)'; border = '#FF5370'; }
           return (
-            <TouchableOpacity
+            <PressableTile
               key={opt}
               style={[styles.chipBtn, { backgroundColor: bg, borderColor: border }]}
               onPress={() => tap(opt)}
-              activeOpacity={0.7}
+              disabled={submitted}
             >
               <Text style={styles.chipText}>{opt}</Text>
-            </TouchableOpacity>
+            </PressableTile>
           );
         })}
       </View>
@@ -220,6 +224,13 @@ function MatchPairsActivity({ activity, submitted, onSubmit }: {
   const [selectedLeft, setSelectedLeft] = useState<string | null>(null);
   const [matched, setMatched] = useState<Record<string, string>>({});
   const [wrong, setWrong] = useState<string[]>([]);
+  const wrongTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (wrongTimeoutRef.current) clearTimeout(wrongTimeoutRef.current);
+    };
+  }, []);
 
   const [rightOptions] = useState(() => {
     const arr = pairs.map(p => p.right);
@@ -249,7 +260,7 @@ function MatchPairsActivity({ activity, submitted, onSubmit }: {
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setWrong([selectedLeft, item]);
-      setTimeout(() => { setWrong([]); setSelectedLeft(null); }, 700);
+      wrongTimeoutRef.current = setTimeout(() => { setWrong([]); setSelectedLeft(null); }, 700);
     }
   };
 
@@ -349,14 +360,14 @@ function NumberLineActivity({ activity, submitted, onSubmit }: {
               textColor = '#2ECC71';
             }
             return (
-              <TouchableOpacity
+              <PressableTile
                 key={n}
                 style={[styles.numberNode, { backgroundColor: bg, borderColor }]}
                 onPress={() => tap(n)}
-                activeOpacity={0.7}
+                disabled={submitted}
               >
                 <Text style={[styles.numberText, { color: textColor }]}>{n}</Text>
-              </TouchableOpacity>
+              </PressableTile>
             );
           })}
         </View>
@@ -421,14 +432,14 @@ function WritingActivity({ activity, submitted, onSubmit }: {
           if (submitted && opt === correct) { bg = 'rgba(46,204,113,0.18)'; border = '#2ECC71'; }
           else if (submitted && isSelected && opt !== correct) { bg = 'rgba(255,83,112,0.18)'; border = '#FF5370'; }
           return (
-            <TouchableOpacity
+            <PressableTile
               key={opt}
               style={[styles.optionBtn, { backgroundColor: bg, borderColor: border }]}
               onPress={() => tap(opt)}
-              activeOpacity={0.7}
+              disabled={submitted}
             >
               <Text style={[styles.optionText, { fontFamily: 'monospace', fontSize: 17 }]}>{opt}</Text>
-            </TouchableOpacity>
+            </PressableTile>
           );
         })}
       </View>

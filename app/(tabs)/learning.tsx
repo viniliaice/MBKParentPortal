@@ -1,29 +1,20 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, LayoutAnimation } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import AuroraBackground from '@/components/AuroraBackground';
+import AnimatedProgressBar from '@/components/AnimatedProgressBar';
 import { useApp } from '@/context/AppContext';
-import { SUBJECTS, Topic, Lesson } from '@/data/learningData';
+import { SUBJECTS, Subject, Topic, Lesson } from '@/data/learningData';
 import { computeMastery } from '@/context/AppContext';
 import { isLessonUnlocked, MASTERY_THRESHOLD } from '@/lib/mastery';
-
-const ACTIVITY_TYPE_LABELS: Record<string, string> = {
-  multipleChoice: 'Multiple Choice',
-  tapCorrect: 'Tap Correct',
-  fillBlank: 'Fill in Blank',
-  dragOrder: 'Put in Order',
-  matchPairs: 'Match Pairs',
-  numberLine: 'Number Line',
-  trueFalse: 'True or False',
-  writing: 'Spelling',
-};
+import { ACTIVITY_TYPES, getActivityTypeMeta } from '@/constants/activityTypes';
 
 export default function LearningScreen() {
   const insets = useSafeAreaInsets();
   const { lessonProgress, gamification } = useApp();
-  const [activeSubject, setActiveSubject] = useState<'math' | 'english'>('math');
+  const [activeSubject, setActiveSubject] = useState<'math' | 'english' | 'physics'>('math');
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
 
   const subject = SUBJECTS.find(s => s.id === activeSubject)!;
@@ -53,7 +44,7 @@ export default function LearningScreen() {
           </View>
         </View>
 
-        <View style={styles.subjectToggle}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.subjectToggle}>
           {SUBJECTS.map(s => (
             <TouchableOpacity
               key={s.id}
@@ -65,55 +56,28 @@ export default function LearningScreen() {
               <Text style={[styles.subjectTabText, activeSubject === s.id && { color: '#FFFFFF' }]}>{s.title}</Text>
             </TouchableOpacity>
           ))}
-        </View>
+        </ScrollView>
 
         <View style={styles.progressCard}>
           <View style={styles.progressHeader}>
             <Text style={styles.progressLabel}>{subject.title} Progress</Text>
             <Text style={[styles.progressPct, { color: subject.color }]}>{completedLessons}/{totalLessons} lessons</Text>
           </View>
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${totalLessons > 0 ? (completedLessons / totalLessons) * 100 : 0}%` as any, backgroundColor: subject.color }]} />
-          </View>
+          <AnimatedProgressBar
+            progress={totalLessons > 0 ? (completedLessons / totalLessons) * 100 : 0}
+            color={subject.color}
+            height={6}
+            trackColor="rgba(255,255,255,0.08)"
+          />
         </View>
 
-        {(() => {
-          const subjectLessonIds = new Set(subject.topics.flatMap(t => t.lessons.map(l => l.id)));
-          const mastery = computeMastery(lessonProgress, subjectLessonIds);
-          const entries = Object.entries(mastery);
-          return entries.length > 0 ? (
-            <View style={styles.masteryCard}>
-              <Text style={styles.masteryTitle}>Mastery by Activity Type</Text>
-              <View style={styles.masteryGrid}>
-                {entries.map(([type, m]) => {
-                  const mapColors: Record<string, string> = {
-                    multipleChoice: '#3D5AFE', tapCorrect: '#00BCD4', fillBlank: '#2ECC71',
-                    dragOrder: '#F59E0B', matchPairs: '#EC4899', numberLine: '#8B5CF6',
-                    trueFalse: '#FF5370', writing: '#14B8A6',
-                  };
-                  const color = mapColors[type] || '#8892B0';
-                  return (
-                    <View key={type} style={[styles.masteryItem, { borderColor: `${color}33` }]}>
-                      <View style={styles.masteryItemHeader}>
-                        <Text style={[styles.masteryType, { color }]}>{ACTIVITY_TYPE_LABELS[type] || type}</Text>
-                        <Text style={[styles.masteryPct, { color }]}>{m.pct}%</Text>
-                      </View>
-                      <View style={styles.masteryTrack}>
-                        <View style={[styles.masteryFill, { width: `${m.pct}%` as any, backgroundColor: color }]} />
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            </View>
-          ) : null;
-        })()}
+        <MasteryCard subject={subject} lessonProgress={lessonProgress} />
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.typeKeyRow}>
-          {Object.entries(ACTIVITY_TYPE_LABELS).map(([type, label]) => (
+          {Object.entries(ACTIVITY_TYPES).map(([type, meta]) => (
             <View key={type} style={styles.typeChip}>
-              <ActivityTypeIcon type={type} size={12} />
-              <Text style={styles.typeChipText}>{label}</Text>
+              <Ionicons name={meta.icon as any} size={12} color={meta.color} />
+              <Text style={styles.typeChipText}>{meta.label}</Text>
             </View>
           ))}
         </ScrollView>
@@ -126,23 +90,35 @@ export default function LearningScreen() {
   );
 }
 
-function TopicCard({ topic, lessonProgress }: { topic: Topic; lessonProgress: Record<string, any> }) {
+const TopicCard = React.memo(function TopicCard({ topic, lessonProgress }: { topic: Topic; lessonProgress: Record<string, any> }) {
   const [expanded, setExpanded] = useState(false);
   const completed = topic.lessons.filter(l => lessonProgress[l.id]?.completed).length;
   const total = topic.lessons.length;
 
+  const toggleExpanded = () => {
+    // Accordion previously popped open/shut instantly. LayoutAnimation gives
+    // the height change a smooth spring for free — no extra state, no
+    // reanimated dependency, matches the "small diff" convention here.
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpanded(e => !e);
+  };
+
   return (
     <View style={styles.topicCard}>
-      <TouchableOpacity onPress={() => setExpanded(!expanded)} activeOpacity={0.8} style={styles.topicHeader}>
+      <TouchableOpacity onPress={toggleExpanded} activeOpacity={0.8} style={styles.topicHeader}>
         <View style={[styles.topicIcon, { backgroundColor: `${topic.color}22` }]}>
           <Ionicons name={topic.iconName as any} size={22} color={topic.color} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.topicTitle}>{topic.title}</Text>
           <Text style={styles.topicDesc} numberOfLines={1}>{topic.description}</Text>
-          <View style={styles.topicProgress}>
-            <View style={[styles.topicProgressFill, { width: `${total > 0 ? (completed / total) * 100 : 0}%` as any, backgroundColor: topic.color }]} />
-          </View>
+          <AnimatedProgressBar
+            progress={total > 0 ? (completed / total) * 100 : 0}
+            color={topic.color}
+            height={4}
+            trackColor="rgba(255,255,255,0.08)"
+            style={{ marginBottom: 2 }}
+          />
           <Text style={styles.topicProgressLabel}>{completed}/{total} lessons</Text>
         </View>
         <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color="#8892B0" />
@@ -178,12 +154,15 @@ function TopicCard({ topic, lessonProgress }: { topic: Topic; lessonProgress: Re
                     <Text style={styles.masteryHint}>Mastery {masteryPct}%</Text>
                   ) : (
                     <View style={styles.lessonMeta}>
-                      {types.map(type => (
-                        <View key={type} style={styles.activityTypePill}>
-                          <ActivityTypeIcon type={type} size={10} />
-                          <Text style={styles.activityTypePillText}>{ACTIVITY_TYPE_LABELS[type]}</Text>
-                        </View>
-                      ))}
+                      {types.map(type => {
+                        const meta = getActivityTypeMeta(type);
+                        return (
+                          <View key={type} style={styles.activityTypePill}>
+                            <Ionicons name={meta.icon as any} size={10} color={meta.color} />
+                            <Text style={styles.activityTypePillText}>{meta.label}</Text>
+                          </View>
+                        );
+                      })}
                     </View>
                   )}
                 </View>
@@ -199,22 +178,37 @@ function TopicCard({ topic, lessonProgress }: { topic: Topic; lessonProgress: Re
       )}
     </View>
   );
-}
+});
 
-function ActivityTypeIcon({ type, size }: { type: string; size: number }) {
-  const map: Record<string, { icon: any; color: string }> = {
-    multipleChoice: { icon: 'radio-button-on', color: '#3D5AFE' },
-    tapCorrect: { icon: 'hand-right', color: '#00BCD4' },
-    fillBlank: { icon: 'pencil', color: '#2ECC71' },
-    dragOrder: { icon: 'swap-vertical', color: '#F59E0B' },
-    matchPairs: { icon: 'git-compare', color: '#EC4899' },
-    numberLine: { icon: 'analytics', color: '#8B5CF6' },
-    trueFalse: { icon: 'checkmark-circle', color: '#FF5370' },
-    writing: { icon: 'text', color: '#14B8A6' },
-  };
-  const cfg = map[type] ?? { icon: 'help-circle', color: '#8892B0' };
-  return <Ionicons name={cfg.icon} size={size} color={cfg.color} />;
-}
+const MasteryCard = React.memo(function MasteryCard({ subject, lessonProgress }: { subject: Subject; lessonProgress: Record<string, any> }) {
+  const mastery = useMemo(() => {
+    const subjectLessonIds = new Set(subject.topics.flatMap(t => t.lessons.map(l => l.id)));
+    return computeMastery(lessonProgress, subjectLessonIds);
+  }, [subject, lessonProgress]);
+
+  const entries = Object.entries(mastery);
+  if (entries.length === 0) return null;
+
+  return (
+    <View style={styles.masteryCard}>
+      <Text style={styles.masteryTitle}>Mastery by Activity Type</Text>
+      <View style={styles.masteryGrid}>
+        {entries.map(([type, m]) => {
+          const meta = getActivityTypeMeta(type);
+          return (
+            <View key={type} style={[styles.masteryItem, { borderColor: `${meta.color}33` }]}>
+              <View style={styles.masteryItemHeader}>
+                <Text style={[styles.masteryType, { color: meta.color }]}>{meta.label}</Text>
+                <Text style={[styles.masteryPct, { color: meta.color }]}>{m.pct}%</Text>
+              </View>
+              <AnimatedProgressBar progress={m.pct} color={meta.color} height={4} trackColor="rgba(255,255,255,0.06)" />
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+});
 
 const styles = StyleSheet.create({
   header: { paddingHorizontal: 20, paddingBottom: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -226,15 +220,13 @@ const styles = StyleSheet.create({
   streakText: { color: '#FF5370', fontSize: 13, fontWeight: '700' },
   levelBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(246,201,14,0.1)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20 },
   levelText: { color: '#F6C90E', fontSize: 13, fontWeight: '700' },
-  subjectToggle: { flexDirection: 'row', marginHorizontal: 20, gap: 10, marginBottom: 16 },
-  subjectTab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  subjectToggle: { flexDirection: 'row', paddingHorizontal: 20, gap: 10, marginBottom: 16 },
+  subjectTab: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   subjectTabText: { fontSize: 14, fontWeight: '700', color: '#8892B0' },
   progressCard: { marginHorizontal: 20, marginBottom: 12, backgroundColor: 'rgba(20,29,58,0.9)', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
   progressHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
   progressLabel: { fontSize: 13, color: '#8892B0' },
   progressPct: { fontSize: 13, fontWeight: '700' },
-  progressTrack: { height: 6, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 3 },
-  progressFill: { height: 6, borderRadius: 3 },
   typeKeyRow: { paddingHorizontal: 20, gap: 8, paddingBottom: 12 },
   masteryCard: { marginHorizontal: 20, marginBottom: 12, backgroundColor: 'rgba(20,29,58,0.9)', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
   masteryTitle: { fontSize: 12, fontWeight: '700', color: '#8892B0', letterSpacing: 0.5, marginBottom: 12 },
@@ -243,8 +235,6 @@ const styles = StyleSheet.create({
   masteryItemHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
   masteryType: { fontSize: 12, fontWeight: '600' },
   masteryPct: { fontSize: 13, fontWeight: '800' },
-  masteryTrack: { height: 4, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 2 },
-  masteryFill: { height: 4, borderRadius: 2 },
   typeChip: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
   typeChipText: { fontSize: 10, color: '#8892B0' },
   topicCard: { marginHorizontal: 20, marginBottom: 12, backgroundColor: 'rgba(20,29,58,0.9)', borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)', overflow: 'hidden' },
@@ -252,8 +242,6 @@ const styles = StyleSheet.create({
   topicIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   topicTitle: { fontSize: 16, fontWeight: '700', color: '#FFFFFF', marginBottom: 2 },
   topicDesc: { fontSize: 12, color: '#8892B0', marginBottom: 6 },
-  topicProgress: { height: 4, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 2, marginBottom: 2 },
-  topicProgressFill: { height: 4, borderRadius: 2 },
   topicProgressLabel: { fontSize: 10, color: '#8892B0' },
   lessonList: { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)' },
   lessonRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.04)' },

@@ -6,11 +6,34 @@ export type ActivityType =
   | 'matchPairs'
   | 'numberLine'
   | 'trueFalse'
-  | 'writing';
+  | 'writing'
+  | 'explorable';
 
 export interface MatchPair {
   left: string;
   right: string;
+}
+
+/**
+ * A threshold-triggered callout for an interactive explorable — the message
+ * shown once the slider crosses `at` (0-100), replaced by the next
+ * threshold's message as the user keeps dragging. Mirrors Brilliant.org's
+ * "drag to see what happens" explorables: manipulate a variable, read live
+ * feedback, no single "correct" answer — the exercise IS the exploration.
+ */
+export interface ExplorableThreshold {
+  at: number;
+  message: string;
+}
+
+export type ExplorableScene = 'toilet' | 'waterTower' | 'fridge' | 'helicopter' | 'contamination';
+
+export interface ExplorableConfig {
+  scene: ExplorableScene;
+  sliderLabel: string;
+  thresholds: ExplorableThreshold[];
+  /** slider value (0-100) the user must reach at least once before "Got it" unlocks. Default 85. */
+  completionThreshold?: number;
 }
 
 export interface Activity {
@@ -24,6 +47,7 @@ export interface Activity {
   pairs?: MatchPair[];
   min?: number;
   max?: number;
+  explorableConfig?: ExplorableConfig;
 }
 
 export interface Lesson {
@@ -49,7 +73,7 @@ export interface Topic {
 }
 
 export interface Subject {
-  id: 'math' | 'english';
+  id: 'math' | 'english' | 'physics';
   title: string;
   color: string;
   iconName: string;
@@ -785,6 +809,213 @@ const englishGrammar: Topic = {
   ],
 };
 
+const householdPhysics: Topic = {
+  id: 'household-physics', title: 'Household Physics', order: 1,
+  description: 'Drag, explore, and discover the physics hiding in everyday objects.',
+  color: '#22D3EE', iconName: 'flask',
+  lessons: [
+    {
+      id: 'phy_1', title: 'Toilets', xp: 70,
+      badgeName: 'Siphon Scientist', badgeIcon: '🚽',
+      objective: 'Discover how a siphon makes a toilet flush.',
+      explanation: 'A toilet bowl always keeps some water in it, sealed by a bent pipe called a trap. Pushing the handle lifts a flapper and lets tank water rush into the bowl. Once enough water piles over the bend in the trap, the whole pipe fills up and starts acting like a straw — sucking the water (and whatever is in the bowl) down and away. That sudden "straw" effect is called a siphon.',
+      activities: [
+        {
+          id: 'phy1_explore', type: 'explorable', difficulty: 2,
+          question: 'Drag the handle to flush the toilet and watch the siphon take over.',
+          hint: 'Keep dragging past halfway — that\'s when the siphon effect kicks in.',
+          options: [], correctAnswer: 'explored',
+          explorableConfig: {
+            scene: 'toilet',
+            sliderLabel: 'Push the flush handle',
+            completionThreshold: 90,
+            thresholds: [
+              { at: 0, message: 'This is the toilet at rest. Water sits in the bowl, sealed by the trap — that seal stops sewer gas from coming up into your home.' },
+              { at: 22, message: 'You\'re pushing the handle... the flapper lifts and water starts rushing from the tank into the bowl.' },
+              { at: 50, message: 'The bowl is filling fast. Once the water goes over the top of the trap\'s bend, something interesting is about to happen...' },
+              { at: 75, message: 'SIPHON! The rushing water fills the whole trap pipe, and suddenly it acts like a straw — sucking everything down and out in one go.' },
+              { at: 92, message: 'Flush complete! As air enters the pipe the siphon breaks, the flapper drops, and the tank starts refilling for next time.' },
+            ],
+          },
+        },
+        { id: 'phy1_a2', type: 'trueFalse', difficulty: 1,
+          question: 'The bent pipe (trap) under a toilet bowl is there to stop sewer smells from coming back up.',
+          hint: 'Think about what keeps water sitting in the bowl at all times.',
+          options: ['True', 'False'], correctAnswer: 'True' },
+        { id: 'phy1_a3', type: 'multipleChoice', difficulty: 2,
+          question: 'What actually pulls the water and waste out of the bowl during a flush?',
+          hint: 'It happens once water fills the whole bent pipe.',
+          options: ['The flapper falling', 'A siphon effect', 'The tank refilling', 'Water pressure from the tap'],
+          correctAnswer: 'A siphon effect' },
+        { id: 'phy1_a4', type: 'fillBlank', difficulty: 2,
+          question: 'A siphon starts once water completely fills the ___ pipe, making it act like a straw.',
+          hint: 'It\'s the bent pipe under the bowl that always holds some water.',
+          options: ['trap', 'tank', 'handle', 'valve'], correctAnswer: 'trap' },
+      ],
+    },
+    {
+      id: 'phy_2', title: 'Water Towers', xp: 70,
+      prerequisiteLessonId: 'phy_1',
+      badgeName: 'Pressure Pro', badgeIcon: '🗼',
+      objective: 'See how height creates water pressure without any pumps.',
+      explanation: 'Water towers store water high above the ground. Gravity pulls that water down through the pipes, and the taller the tower, the harder gravity pushes — creating more pressure. That\'s why a full tank up high can supply water to an entire neighbourhood all day, using almost no extra energy: the height itself does the work.',
+      activities: [
+        {
+          id: 'phy2_explore', type: 'explorable', difficulty: 2,
+          question: 'Raise the water tower and watch what happens to the water pressure below.',
+          hint: 'Keep raising it — taller towers push water out harder and farther.',
+          options: [], correctAnswer: 'explored',
+          explorableConfig: {
+            scene: 'waterTower',
+            sliderLabel: 'Raise the tower\'s height',
+            completionThreshold: 90,
+            thresholds: [
+              { at: 0, message: 'This tower is barely off the ground. Water needs pressure to travel through pipes — right now there\'s almost none.' },
+              { at: 30, message: 'As the tower gets taller, gravity pulls the water down through the pipes harder, building up pressure.' },
+              { at: 55, message: 'Now there\'s enough pressure to reach taps on the top floor of a tall building!' },
+              { at: 80, message: 'Tall enough! This is why real water towers are built so high — one full tank can supply a whole town using gravity alone.' },
+              { at: 92, message: 'Maximum pressure — see how much farther and higher the water sprays now compared to when the tower was short?' },
+            ],
+          },
+        },
+        { id: 'phy2_a2', type: 'multipleChoice', difficulty: 2,
+          question: 'Why are water towers built so tall?',
+          hint: 'Think about what pulls water down through pipes.',
+          options: ['To look impressive', 'Height creates water pressure', 'To collect rain', 'To keep water cold'],
+          correctAnswer: 'Height creates water pressure' },
+        { id: 'phy2_a3', type: 'trueFalse', difficulty: 1,
+          question: 'A taller water tower produces LESS water pressure at the ground than a short one.',
+          hint: 'Does gravity pull harder or softer from higher up?',
+          options: ['True', 'False'], correctAnswer: 'False' },
+        { id: 'phy2_a4', type: 'fillBlank', difficulty: 2,
+          question: 'Water towers use ___ instead of constantly running pumps to push water through pipes.',
+          hint: 'The force that pulls everything toward the ground.',
+          options: ['gravity', 'electricity', 'wind', 'heat'], correctAnswer: 'gravity' },
+      ],
+    },
+    {
+      id: 'phy_3', title: 'Refrigerators', xp: 75,
+      prerequisiteLessonId: 'phy_2',
+      badgeName: 'Cool Engineer', badgeIcon: '🧊',
+      objective: 'Learn that fridges move heat out instead of making cold.',
+      explanation: 'A fridge doesn\'t create cold — it moves heat from the inside to the outside. A compressor squeezes a special coolant into a hot liquid, which releases heat through coils on the back of the fridge. That liquid then expands back into a cold gas inside the fridge, soaking up heat from your food. The cycle repeats, over and over, moving heat out one small trip at a time.',
+      activities: [
+        {
+          id: 'phy3_explore', type: 'explorable', difficulty: 2,
+          question: 'Turn up the compressor and watch heat get pumped out of the fridge.',
+          hint: 'Watch both thermometers — one drops while the other rises.',
+          options: [], correctAnswer: 'explored',
+          explorableConfig: {
+            scene: 'fridge',
+            sliderLabel: 'Speed up the compressor',
+            completionThreshold: 90,
+            thresholds: [
+              { at: 0, message: 'The compressor is off. Without it pumping coolant around, the fridge slowly warms up to room temperature.' },
+              { at: 28, message: 'The compressor kicks on, squeezing coolant gas until it turns into a hot liquid — releasing heat through the coils on the back.' },
+              { at: 55, message: 'That hot liquid cools and flows inside, where it suddenly expands back into a cold gas — this is what actually chills your food.' },
+              { at: 78, message: 'Cycle complete: the cold gas soaks up heat from inside, gets pumped back to the compressor, and repeats. The fridge isn\'t making cold — it\'s moving heat OUT.' },
+              { at: 92, message: 'Maximum cooling! Notice the inside gets colder while the coils on the back get warmer — that heat has to go somewhere.' },
+            ],
+          },
+        },
+        { id: 'phy3_a2', type: 'trueFalse', difficulty: 2,
+          question: 'A fridge works by creating "cold" and pumping it inside.',
+          hint: 'Which direction does the heat actually travel — in, or out?',
+          options: ['True', 'False'], correctAnswer: 'False' },
+        { id: 'phy3_a3', type: 'multipleChoice', difficulty: 2,
+          question: 'What happens to the coils on the BACK of a fridge while it\'s running?',
+          hint: 'That heat from inside has to go somewhere.',
+          options: ['They get colder', 'They get warmer', 'Nothing changes', 'They freeze'],
+          correctAnswer: 'They get warmer' },
+        { id: 'phy3_a4', type: 'fillBlank', difficulty: 2,
+          question: 'A refrigerator moves ___ from inside the fridge to the outside air.',
+          hint: 'It is not "cold" being created — it is the opposite being removed.',
+          options: ['heat', 'cold', 'water', 'air'], correctAnswer: 'heat' },
+      ],
+    },
+    {
+      id: 'phy_4', title: 'Helicopter Toy', xp: 75,
+      prerequisiteLessonId: 'phy_3',
+      badgeName: 'Lift Master', badgeIcon: '🚁',
+      objective: 'Discover how spinning blades create enough lift to fly.',
+      explanation: 'A helicopter\'s blades are angled like tiny wings. As they spin, they push air downward — and for every push, the air pushes back just as hard in the opposite direction (that\'s one of Newton\'s laws in action). Spin the blades fast enough, and that upward push, called lift, becomes stronger than gravity pulling the helicopter down. That\'s the moment it lifts off the ground.',
+      activities: [
+        {
+          id: 'phy4_explore', type: 'explorable', difficulty: 2,
+          question: 'Spin the rotor blades faster and watch the helicopter take off.',
+          hint: 'The helicopter needs enough spin speed before lift beats gravity.',
+          options: [], correctAnswer: 'explored',
+          explorableConfig: {
+            scene: 'helicopter',
+            sliderLabel: 'Spin the rotor blades',
+            completionThreshold: 90,
+            thresholds: [
+              { at: 0, message: 'The blades are still. Gravity is the only force acting on the helicopter — it stays firmly on the ground.' },
+              { at: 32, message: 'Spinning faster now — the angled blades are pushing air downward, but not enough yet to lift the helicopter\'s weight.' },
+              { at: 58, message: 'Getting close! The faster the blades spin, the more air they push down every second, and the harder that air pushes back up.' },
+              { at: 78, message: 'LIFTOFF! Once the upward push (lift) beats the helicopter\'s weight, it rises. NASA\'s Mars helicopter, Ingenuity, uses this exact idea.' },
+              { at: 92, message: 'Full speed — maximum lift. Real helicopters fly the same way, just with much bigger blades and engines.' },
+            ],
+          },
+        },
+        { id: 'phy4_a2', type: 'multipleChoice', difficulty: 2,
+          question: 'What force do spinning helicopter blades create that fights against gravity?',
+          hint: 'It is the upward push created by pushing air downward.',
+          options: ['Lift', 'Drag', 'Friction', 'Magnetism'],
+          correctAnswer: 'Lift' },
+        { id: 'phy4_a3', type: 'trueFalse', difficulty: 1,
+          question: 'A helicopter lifts off the moment its lift force is greater than its weight.',
+          hint: 'Think about what "winning" the tug-of-war between forces would mean.',
+          options: ['True', 'False'], correctAnswer: 'True' },
+        { id: 'phy4_a4', type: 'fillBlank', difficulty: 2,
+          question: 'Helicopter blades push air ___, and the air pushes back up on the blades.',
+          hint: 'Which direction does the spinning blade force the air?',
+          options: ['downward', 'upward', 'sideways', 'nowhere'], correctAnswer: 'downward' },
+      ],
+    },
+    {
+      id: 'phy_5', title: 'Water Contamination', xp: 80,
+      prerequisiteLessonId: 'phy_4',
+      badgeName: 'Filtration Expert', badgeIcon: '💧',
+      objective: 'Explore how filter pore size determines what stays out of drinking water.',
+      explanation: 'Water filters work like very fine strainers. A coarse filter only catches big things like leaves and sand. A finer filter can catch smaller debris, and a very fine one (like the membranes used in reverse osmosis) can even block bacteria and tiny dissolved particles. The finer the filter, the cleaner the water — but also the more it costs to build and run.',
+      activities: [
+        {
+          id: 'phy5_explore', type: 'explorable', difficulty: 2,
+          question: 'Make the filter finer and watch what gets blocked at each stage.',
+          hint: 'Keep going finer — smaller and smaller things get stopped.',
+          options: [], correctAnswer: 'explored',
+          explorableConfig: {
+            scene: 'contamination',
+            sliderLabel: 'Make the filter finer',
+            completionThreshold: 90,
+            thresholds: [
+              { at: 0, message: 'This filter has big gaps — like a kitchen strainer. It only stops large chunks like leaves and sand; everything else flows straight through.' },
+              { at: 28, message: 'A finer mesh now blocks smaller debris too, but bacteria and viruses are far too tiny to be stopped by cloth or sand alone.' },
+              { at: 52, message: 'This is roughly how a household carbon filter works — it removes chlorine taste, sediment, and some chemicals, but not everything.' },
+              { at: 78, message: 'Very fine filtration (like reverse osmosis membranes) can block bacteria and even many dissolved salts — this is how ships turn seawater into drinking water.' },
+              { at: 92, message: 'At this level almost nothing gets through except water molecules themselves — the water looks completely clear now.' },
+            ],
+          },
+        },
+        { id: 'phy5_a2', type: 'multipleChoice', difficulty: 3,
+          question: 'Why can\'t a simple cloth or sand filter remove bacteria from water?',
+          hint: 'Compare the size of bacteria to the size of the gaps in cloth or sand.',
+          options: ['Bacteria are too small to be caught', 'Bacteria are magnetic', 'Bacteria float above water', 'Cloth repels bacteria'],
+          correctAnswer: 'Bacteria are too small to be caught' },
+        { id: 'phy5_a3', type: 'trueFalse', difficulty: 2,
+          question: 'Water that looks clear is always guaranteed to be free of harmful bacteria.',
+          hint: 'Can something be invisible to the eye but still present in the water?',
+          options: ['True', 'False'], correctAnswer: 'False' },
+        { id: 'phy5_a4', type: 'fillBlank', difficulty: 2,
+          question: 'The finer a filter\'s pores, the ___ particles it can block from passing through.',
+          hint: 'A finer mesh catches things that a coarse one would miss.',
+          options: ['smaller', 'larger', 'heavier', 'faster'], correctAnswer: 'smaller' },
+      ],
+    },
+  ],
+};
+
 export const MATH_SUBJECT: Subject = {
   id: 'math', title: 'Mathematics', color: '#3B82F6', iconName: 'calculator',
   topics: [mathCounting, mathAddition, mathSubtraction, mathShapes],
@@ -795,7 +1026,12 @@ export const ENGLISH_SUBJECT: Subject = {
   topics: [englishAlphabet, englishPhonics, englishVocabulary, englishGrammar],
 };
 
-export const SUBJECTS: Subject[] = [MATH_SUBJECT, ENGLISH_SUBJECT];
+export const PHYSICS_SUBJECT: Subject = {
+  id: 'physics', title: 'Physics of the Everyday', color: '#22D3EE', iconName: 'flask',
+  topics: [householdPhysics],
+};
+
+export const SUBJECTS: Subject[] = [MATH_SUBJECT, ENGLISH_SUBJECT, PHYSICS_SUBJECT];
 
 export function getTopicById(topicId: string): Topic | undefined {
   for (const subject of SUBJECTS) {

@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import AuroraBackground from '@/components/AuroraBackground';
+import StudentSelector from '@/components/StudentSelector';
 import { useApp } from '@/context/AppContext';
 
 const STATUS_COLOR = { present: '#2ECC71', absent: '#FF5370', late: '#F59E0B' };
@@ -68,13 +69,7 @@ export default function AttendanceScreen() {
           <View style={{ width: 36 }} />
         </View>
 
-        <View style={styles.studentRow}>
-          {students.map(s => (
-            <TouchableOpacity key={s.id} style={[styles.studentBtn, selectedStudent === s.id && { borderColor: s.avatarColor, backgroundColor: `${s.avatarColor}22` }]} onPress={() => setSelectedStudent(s.id)} activeOpacity={0.8}>
-              <Text style={[styles.studentBtnText, selectedStudent === s.id && { color: s.avatarColor }]}>{s.name.split(' ')[0]}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <StudentSelector students={students} selectedId={selectedStudent} onSelect={setSelectedStudent} style={{ marginBottom: 16 }} />
 
         <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: Platform.OS === 'web' ? 34 : 20 }}>
           <View style={styles.summaryCard}>
@@ -163,9 +158,6 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 12 },
   backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 20, fontWeight: '800', color: '#FFFFFF' },
-  studentRow: { flexDirection: 'row', paddingHorizontal: 20, gap: 10, marginBottom: 16 },
-  studentBtn: { flex: 1, paddingVertical: 10, borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.1)', alignItems: 'center' },
-  studentBtnText: { fontSize: 14, fontWeight: '700', color: '#8892B0' },
   summaryCard: { backgroundColor: 'rgba(20,29,58,0.9)', borderRadius: 18, padding: 20, flexDirection: 'row', alignItems: 'center', gap: 20, marginBottom: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
   summaryCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.1)' },
   summaryPct: { fontSize: 22, fontWeight: '800' },

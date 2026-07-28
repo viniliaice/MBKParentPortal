@@ -6,6 +6,7 @@ import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import AuroraBackground from '@/components/AuroraBackground';
+import StudentSelector from '@/components/StudentSelector';
 import { useApp } from '@/context/AppContext';
 import { supabase, type SupabaseAcademicYear } from '@/lib/supabase';
 import { getGrade, getGradeColor } from '@/data/mockData';
@@ -256,20 +257,13 @@ export default function ResultsScreen() {
           <View style={{ width: 36 }} />
         </View>
 
-        <View style={styles.studentRow}>
-          {students.map(s => (
-            <TouchableOpacity
-              key={s.id}
-              style={[styles.studentBtn, selectedStudent === s.id && { borderColor: s.avatarColor, backgroundColor: `${s.avatarColor}22` }]}
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSelectedStudent(s.id); }}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.studentBtnText, selectedStudent === s.id && { color: s.avatarColor }]}>
-                {s.name}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <StudentSelector
+          students={students}
+          selectedId={selectedStudent}
+          fullName
+          style={{ marginBottom: 4 }}
+          onSelect={id => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSelectedStudent(id); }}
+        />
 
         {loading ? (
           <LoadingSkeleton />
@@ -454,9 +448,6 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 12 },
   backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 20, fontWeight: '800', color: '#FFFFFF' },
-  studentRow: { flexDirection: 'row', paddingHorizontal: 20, gap: 10, marginBottom: 4 },
-  studentBtn: { flex: 1, paddingVertical: 10, borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.1)', alignItems: 'center' },
-  studentBtnText: { fontSize: 14, fontWeight: '700', color: '#8892B0' },
   yearRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, paddingVertical: 8, paddingHorizontal: 20 },
   yearArrow: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
   yearLabel: { fontSize: 15, fontWeight: '700', color: '#FFFFFF', minWidth: 90, textAlign: 'center' },

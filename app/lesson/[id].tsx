@@ -8,22 +8,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, router } from 'expo-router';
 import AuroraBackground from '@/components/AuroraBackground';
 import ActivityRenderer from '@/components/ActivityRenderer';
-import ConceptAnimation from '@/components/ConceptAnimation';
+import ConceptAnimation, { hasConceptAnimation } from '@/components/ConceptAnimation';
 import CelebrationOverlay from '@/components/CelebrationOverlay';
+import AnimatedProgressBar from '@/components/AnimatedProgressBar';
 import { getLessonById, getTopicById } from '@/data/learningData';
 import { useApp } from '@/context/AppContext';
+import { getActivityTypeMeta } from '@/constants/activityTypes';
 import * as Haptics from 'expo-haptics';
-
-const TYPE_DESCRIPTIONS: Record<string, string> = {
-  multipleChoice: 'Choose the correct answer',
-  tapCorrect: 'Tap the correct answer',
-  fillBlank: 'Fill in the blank',
-  dragOrder: 'Tap in the correct order',
-  matchPairs: 'Match the pairs',
-  numberLine: 'Find the number',
-  trueFalse: 'True or False',
-  writing: 'Spell it right',
-};
 
 export default function LessonScreen() {
   const { id, topicId } = useLocalSearchParams<{ id: string; topicId: string }>();
@@ -60,9 +51,17 @@ export default function LessonScreen() {
   const activities = lesson.activities;
   const currentIdx = typeof step === 'number' ? step : -1;
   const currentActivity = currentIdx >= 0 ? activities[currentIdx] : null;
+  // Physics topics teach concepts through the explorable activity itself
+  // rather than a separate tap-reveal animation scene (none exists for them
+  // in ConceptAnimation's CONCEPTS map) — skip that step entirely instead of
+  // silently falling back to the wrong (counting) animation.
+  const showsConceptAnimation = hasConceptAnimation(topicId);
 
-  const totalSteps = activities.length + 2;
-  const currentStepNum = step === 'intro' ? 0 : step === 'animation' ? 1 : step === 'done' ? totalSteps - 1 : (step as number) + 2;
+  const totalSteps = activities.length + (showsConceptAnimation ? 2 : 1);
+  const currentStepNum = step === 'intro' ? 0
+    : step === 'animation' ? 1
+    : step === 'done' ? totalSteps - 1
+    : (step as number) + (showsConceptAnimation ? 2 : 1);
   const progress = currentStepNum / (totalSteps - 1);
 
   const handleCorrect = () => {
@@ -78,8 +77,10 @@ export default function LessonScreen() {
       setActivityResults(prev => [...prev, { activityId: currentActivity.id, type: currentActivity.type, correct: false }]);
     }
     setAnsweredCurrent(true);
-    setReviewingActivityIdx(currentIdx);
-    setStep('review');
+    if (showsConceptAnimation) {
+      setReviewingActivityIdx(currentIdx);
+      setStep('review');
+    }
   };
 
   const handleReviewComplete = () => {
@@ -94,7 +95,7 @@ export default function LessonScreen() {
 
   const handleNext = () => {
     if (step === 'intro') {
-      setStep('animation');
+      setStep(showsConceptAnimation ? 'animation' : 0);
     } else if (typeof step === 'number') {
       if (!answeredCurrent) return;
       if (step < activities.length - 1) {
@@ -123,9 +124,7 @@ export default function LessonScreen() {
             <Ionicons name="close" size={20} color="#FFFFFF" />
           </TouchableOpacity>
           <View style={styles.progressContainer}>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${progress * 100}%` as any, backgroundColor: topic.color }]} />
-            </View>
+            <AnimatedProgressBar progress={progress * 100} color={topic.color} style={styles.progressTrack} />
             <Text style={styles.progressLabel}>{currentStepNum + 1}/{totalSteps}</Text>
           </View>
         </View>
@@ -158,7 +157,7 @@ export default function LessonScreen() {
                   <View style={styles.activityTypesRow}>
                     {[...new Set(activities.map(a => a.type))].map(type => (
                       <View key={type} style={styles.activityTypePill}>
-                        <Text style={styles.activityTypePillText}>{TYPE_DESCRIPTIONS[type]}</Text>
+                        <Text style={styles.activityTypePillText}>{getActivityTypeMeta(type).description}</Text>
                       </View>
                     ))}
                   </View>
@@ -171,9 +170,11 @@ export default function LessonScreen() {
             ) : (
               <Animated.View style={[styles.activityContainer, { opacity: fadeAnim }]}>
                 <View style={styles.activityHeader}>
-                  <Text style={styles.activityNum}>Question {(step as number) + 1} of {activities.length}</Text>
+                  <Text style={styles.activityNum}>
+                    {currentActivity!.type === 'explorable' ? 'Explore' : 'Question'} {(step as number) + 1} of {activities.length}
+                  </Text>
                   <View style={[styles.activityTypeBadge, { backgroundColor: `${topic.color}22`, borderColor: `${topic.color}44` }]}>
-                    <Text style={[styles.activityTypeBadgeText, { color: topic.color }]}>{TYPE_DESCRIPTIONS[currentActivity!.type]}</Text>
+                    <Text style={[styles.activityTypeBadgeText, { color: topic.color }]}>{getActivityTypeMeta(currentActivity!.type).description}</Text>
                   </View>
                 </View>
                 <View style={styles.questionBox}>
@@ -222,7 +223,6 @@ const styles = StyleSheet.create({
   closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
   progressContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   progressTrack: { flex: 1, height: 6, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 3 },
-  progressFill: { height: 6, borderRadius: 3 },
   progressLabel: { fontSize: 12, color: '#8892B0', width: 40, textAlign: 'right' },
   content: { padding: 20, paddingBottom: 40 },
   introContainer: { alignItems: 'center', gap: 20 },
