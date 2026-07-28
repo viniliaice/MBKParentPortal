@@ -1,5 +1,5 @@
 import React from 'react';
-import ToiletFlushDiagram from '@/components/engine/scenes/physics/ToiletFlushDiagram';
+import ToiletCutawayDiagram from '@/components/engine/scenes/physics/ToiletCutawayDiagram';
 import ToiletTankDiagram from '@/components/engine/scenes/physics/ToiletTankDiagram';
 
 /*
@@ -13,8 +13,8 @@ import ToiletTankDiagram from '@/components/engine/scenes/physics/ToiletTankDiag
  * to change.
  */
 
-export const physicsSceneRegistry: Record<string, (progress: number, stageIndex: number, color: string) => React.ReactNode> = {
-  toiletFlush: (progress, _stageIndex, color) => <ToiletFlushDiagram progress={progress} color={color} />,
+export const physicsSceneRegistry: Record<string, (progress: number, color: string) => React.ReactNode> = {
+  toiletCutaway: (progress, color) => <ToiletCutawayDiagram progress={progress} color={color} />,
 };
 
 export const physicsTankSceneRegistry: Record<string, (params: Record<string, number>, color: string) => React.ReactNode> = {

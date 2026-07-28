@@ -145,7 +145,7 @@ export default function ActivityRenderer({ activity, onCorrect, onIncorrect, acc
             submitted={submitted}
             onComplete={handleResult}
             accentColor={accentColor}
-            renderScene={(progress, stageIndex) => physicsSceneRegistry[activity.causeEffectConfig!.sceneKey]?.(progress, stageIndex, accentColor)}
+            renderScene={(sceneProgress) => physicsSceneRegistry[activity.causeEffectConfig!.sceneKey]?.(sceneProgress, accentColor)}
           />
         )
         : BUILD_TYPES.has(activity.type) && activity.buildChallengeConfig
@@ -159,7 +159,7 @@ export default function ActivityRenderer({ activity, onCorrect, onIncorrect, acc
             submitted={submitted}
             onComplete={handleResult}
             accentColor={accentColor}
-            renderScene={() => physicsSceneRegistry[activity.hotspotConfig!.sceneKey]?.(1, 0, accentColor)}
+            renderScene={() => physicsSceneRegistry[activity.hotspotConfig!.sceneKey]?.(100, accentColor)}
           />
         )
         : activity.type === 'predictionChallenge' && activity.predictionConfig
@@ -170,7 +170,7 @@ export default function ActivityRenderer({ activity, onCorrect, onIncorrect, acc
             onComplete={handleResult}
             accentColor={accentColor}
             renderScene={activity.predictionConfig.sceneKey
-              ? () => physicsSceneRegistry[activity.predictionConfig!.sceneKey!]?.(1, 0, accentColor)
+              ? () => physicsSceneRegistry[activity.predictionConfig!.sceneKey!]?.(100, accentColor)
               : undefined}
           />
         )

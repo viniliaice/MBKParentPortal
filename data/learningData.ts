@@ -119,26 +119,50 @@ export interface ParameterExperimentConfig {
   goalThresholdPct?: number;
 }
 
+export interface CameraShot {
+  /** 1 = fully zoomed out (whole scene). Larger = zoomed in. */
+  scale: number;
+  /** 0-100, the point in the scene the camera centers on horizontally. */
+  focusX: number;
+  /** 0-100, the point in the scene the camera centers on vertically. */
+  focusY: number;
+}
+
 export interface CauseEffectStage {
   id: string;
+  /** short stage name shown in the stage tracker, e.g. "Siphon Starts" */
+  title: string;
+  /** explanation revealed once this stage's transition finishes and playback auto-pauses */
   caption: string;
-  atMs: number;
+  /** the underlying 0-100 scene-progress value this stage animates TO (stage 0's value is the resting start state) */
+  toValue: number;
+  /** ms for the transition into this stage at 1x speed — deliberately slow, this is a museum-exhibit pace, not realism */
+  durationMs: number;
+  /** where the camera pans/zooms to while this stage plays and while it's paused afterward */
+  camera: CameraShot;
 }
 
 /**
- * Press a trigger, watch a chained sequence of effects animate through
- * stages. Powers `causeEffectExplorer`, and is reused (via
- * components/engine/FlowSimulation.tsx) for `animatedProcess`,
- * `interactiveTimeline`, and `flowSimulation` — all four names describe a
- * sequential, replayable "push button, watch it happen" demo.
+ * A guided, camera-directed, stage-by-stage simulation: the student steps
+ * through named stages (Play/Pause/Restart/Step Forward/Step Back/speed),
+ * each stage animates the scene toward its `toValue` at a deliberately slow
+ * pace, the camera pans/zooms to `camera` for that stage, and playback
+ * always auto-pauses at the end of a stage so the student reads the
+ * caption before continuing — nothing auto-advances through multiple
+ * stages unattended. Powers `causeEffectExplorer`, and is reused (via
+ * components/engine/CauseEffectExplorer.tsx) for `animatedProcess`,
+ * `interactiveTimeline`, and `flowSimulation` — all four names describe
+ * the same "staged, camera-directed process" interaction, so a future
+ * Biology cell-division or Chemistry reaction lesson reuses this exact
+ * component with its own stages/camera shots/scene.
  */
 export interface CauseEffectExplorerConfig {
-  triggerLabel: string;
-  triggerIcon?: string;
   stages: CauseEffectStage[];
-  totalDurationMs?: number;
-  /** scene key resolved to a renderer in components/engine. */
+  /** scene key resolved to a renderer in components/engine's scene registry. */
   sceneKey: string;
+  /** world-space size the scene is laid out in, used by the camera to compute pan/zoom. */
+  sceneWidth: number;
+  sceneHeight: number;
   completionLabel?: string;
 }
 
@@ -1030,21 +1054,42 @@ const householdPhysics: Topic = {
         // --- Interactive Discovery: flush the toilet, watch the siphon fire ---
         {
           id: 'phy1_flush', type: 'causeEffectExplorer', difficulty: 2,
-          question: 'Press flush. Watch closely — something surprising happens to the water.',
-          hint: 'Keep an eye on the bowl. The water level does something you might not expect right before it disappears.',
+          question: 'Step through the flush, one stage at a time. Watch where the water actually goes.',
+          hint: 'Use Step Forward to advance one stage at a time, or Play to watch continuously — you can Step Back or Restart any time.',
           options: [], correctAnswer: 'explored',
           causeEffectConfig: {
-            triggerLabel: 'Press the flush handle',
-            triggerIcon: 'arrow-down-circle',
-            sceneKey: 'toiletFlush',
-            totalDurationMs: 2400,
-            completionLabel: 'I saw the siphon!',
+            sceneKey: 'toiletCutaway',
+            sceneWidth: 340,
+            sceneHeight: 400,
+            completionLabel: 'I understand the siphon!',
             stages: [
-              { id: 's1', atMs: 0, caption: 'At rest: gravity holds a resting pool of water in the bowl, sealed by the trap below it.' },
-              { id: 's2', atMs: 350, caption: 'The flapper lifts. Tank water pours into the bowl, pushed down by gravity.' },
-              { id: 's3', atMs: 1150, caption: 'The bowl fills past the top of the trap\'s bend — pressure is building inside that pipe.' },
-              { id: 's4', atMs: 1700, caption: 'SIPHON! The trap pipe is completely full of water, so it starts acting like a straw, pulling everything through in one continuous flow.' },
-              { id: 's5', atMs: 2150, caption: 'Air breaks the siphon, the flapper drops shut, and the float valve starts letting the tank refill.' },
+              { id: 's0', title: 'Tank Full', toValue: 0, durationMs: 600,
+                camera: { scale: 1, focusX: 50, focusY: 48 },
+                caption: 'At rest, gravity holds the tank full above and a resting pool of water sealed in the bowl below — that seal is what stops sewer gas from rising back into the room.' },
+              { id: 's1', title: 'Handle Pressed', toValue: 9, durationMs: 900,
+                camera: { scale: 1.9, focusX: 27, focusY: 31 },
+                caption: 'Pressing the handle lifts the flush valve at the bottom of the tank.' },
+              { id: 's2', title: 'Valve Opens', toValue: 20, durationMs: 1400,
+                camera: { scale: 1.9, focusX: 27, focusY: 31 },
+                caption: 'The flush valve is fully open now. With nothing holding it back, gravity pulls the tank\'s water straight down into the bowl.' },
+              { id: 's3', title: 'Water Falls', toValue: 40, durationMs: 1800,
+                camera: { scale: 1.6, focusX: 44, focusY: 52 },
+                caption: 'Watch the bowl — water pours in and the level climbs steadily upward, pushed by gravity alone.' },
+              { id: 's4', title: 'Pressure Changes', toValue: 48, durationMs: 1400,
+                camera: { scale: 2.1, focusX: 58, focusY: 52 },
+                caption: 'The water has reached the top of the trapway\'s rising leg. As it spills over, pressure inside that narrow pipe starts to build.' },
+              { id: 's5', title: 'Siphon Starts', toValue: 60, durationMs: 2000,
+                camera: { scale: 2.4, focusX: 60, focusY: 53 },
+                caption: 'SIPHON! The rising leg of the trapway is now completely full of water, so the whole pipe suddenly acts like a bent straw — pulling water through continuously instead of just trickling over the top.' },
+              { id: 's6', title: 'Rapid Bowl Evacuation', toValue: 75, durationMs: 1400,
+                camera: { scale: 1.7, focusX: 63, focusY: 66 },
+                caption: 'With the siphon running, the bowl empties in a rush — everything gets pulled down the trapway and out through the outlet pipe.' },
+              { id: 's7', title: 'Tank Refill', toValue: 88, durationMs: 2200,
+                camera: { scale: 1.9, focusX: 47, focusY: 15 },
+                caption: 'Air finally breaks the siphon, the flush valve drops shut, and the float valve lets fresh water start refilling the tank.' },
+              { id: 's8', title: 'Float Valve Closes', toValue: 100, durationMs: 1400,
+                camera: { scale: 1.9, focusX: 47, focusY: 15 },
+                caption: 'As the tank refills, the float rises with the water. Once it reaches the top, it seals the float valve completely — using gravity and buoyancy alone to stop the water exactly on time.' },
             ],
           },
         },
