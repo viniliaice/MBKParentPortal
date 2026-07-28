@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 interface Props {
@@ -7,10 +7,16 @@ interface Props {
   color: string;
 }
 
+const PORCELAIN = '#E8ECF5';
+const PORCELAIN_DIM = 'rgba(232,236,245,0.35)';
+
 /**
- * Simplified cross-section diagram, not a photoreal toilet — matches the
- * "idealized schematic that reacts to the slider" style of Brilliant's
- * explorables rather than trying to be a literal illustration.
+ * Was previously a labelled rounded-bottom rectangle ("BOWL") that read as
+ * an abstract blob, not a toilet. Rebuilt as a recognizable side-view
+ * silhouette: tank -> oval rim -> tapered bowl body -> pedestal base,
+ * all in porcelain white/grey so it reads as bathroom fixtures rather than
+ * a generic diagram. Still a simplified schematic (no SVG in this project),
+ * just a clearer one.
  */
 export default function ToiletScene({ value, color }: Props) {
   // Flapper opens 0->45deg over the first third of the drag.
@@ -32,7 +38,6 @@ export default function ToiletScene({ value, color }: Props) {
     <View style={styles.root}>
       <View style={styles.tankRow}>
         <View style={styles.tank}>
-          <Text style={styles.tankLabel}>TANK</Text>
           <View
             style={[
               styles.flapper,
@@ -43,52 +48,77 @@ export default function ToiletScene({ value, color }: Props) {
         {siphonActive && (
           <View style={styles.whooshBadge}>
             <Ionicons name="sync" size={14} color="#22D3EE" />
-            <Text style={styles.whooshText}>SIPHON!</Text>
           </View>
         )}
       </View>
+      <View style={styles.tankToBowlPipe} />
 
-      <View style={styles.bowl}>
-        <View style={[styles.bowlWater, { height: `${Math.max(4, waterLevel)}%`, backgroundColor: `${color}AA` }]} />
-        <Text style={styles.bowlLabel}>BOWL</Text>
+      <View style={styles.toiletSilhouette}>
+        {/* rim — the oval opening you'd sit over */}
+        <View style={styles.rim}>
+          <View style={styles.rimHole}>
+            <View style={[styles.bowlWater, { height: `${Math.max(4, waterLevel)}%`, backgroundColor: `${color}CC` }]} />
+          </View>
+        </View>
+        {/* bowl body tapering down from the rim */}
+        <View style={styles.bowlBody} />
+        {/* pedestal base connecting the bowl to the floor/trap */}
+        <View style={styles.pedestal} />
       </View>
 
       <View style={styles.trapRow}>
         <View style={[styles.trapPipe, siphonActive && { borderColor: color }]} />
         <Ionicons
           name={siphonActive ? 'arrow-down-circle' : 'ellipse-outline'}
-          size={20}
+          size={18}
           color={siphonActive ? color : 'rgba(255,255,255,0.2)'}
         />
         <View style={[styles.trapPipe, siphonActive && { borderColor: color }]} />
       </View>
-      <Text style={styles.trapCaption}>the trap — always holds some water</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { alignItems: 'center', gap: 4, width: '100%' },
-  tankRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  root: { alignItems: 'center', width: '100%' },
+  tankRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 0 },
   tank: {
-    width: 120, height: 46, borderRadius: 8, borderWidth: 2, borderColor: 'rgba(255,255,255,0.25)',
-    backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+    width: 100, height: 40, borderRadius: 6, borderWidth: 2, borderColor: PORCELAIN,
+    backgroundColor: 'rgba(232,236,245,0.06)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
-  tankLabel: { fontSize: 9, fontWeight: '800', color: '#8892B0', letterSpacing: 1, position: 'absolute', top: 4 },
-  flapper: { width: 30, height: 6, borderRadius: 3, marginTop: 10 },
+  flapper: { width: 26, height: 6, borderRadius: 3 },
   whooshBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(34,211,238,0.15)',
-    borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: 'rgba(34,211,238,0.4)',
+    width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(34,211,238,0.15)', borderWidth: 1, borderColor: 'rgba(34,211,238,0.4)',
   },
-  whooshText: { fontSize: 11, fontWeight: '800', color: '#22D3EE' },
-  bowl: {
-    width: 150, height: 90, borderBottomLeftRadius: 70, borderBottomRightRadius: 70,
-    borderWidth: 2, borderColor: 'rgba(255,255,255,0.25)', borderTopWidth: 0,
-    backgroundColor: 'rgba(255,255,255,0.04)', overflow: 'hidden', justifyContent: 'flex-end', alignItems: 'center',
+  tankToBowlPipe: { width: 8, height: 8, backgroundColor: PORCELAIN_DIM, borderRadius: 2 },
+
+  toiletSilhouette: { alignItems: 'center' },
+  // Flattened ellipse = the seat/rim opening viewed from the side.
+  rim: {
+    width: 132, height: 34, borderRadius: 66, borderWidth: 4, borderColor: PORCELAIN,
+    backgroundColor: 'rgba(232,236,245,0.05)', alignItems: 'center', justifyContent: 'center',
   },
-  bowlWater: { width: '100%', borderTopLeftRadius: 4, borderTopRightRadius: 4 },
-  bowlLabel: { position: 'absolute', top: 6, fontSize: 9, fontWeight: '800', color: '#8892B0', letterSpacing: 1 },
-  trapRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
-  trapPipe: { width: 24, height: 10, borderWidth: 2, borderColor: 'rgba(255,255,255,0.2)', borderRadius: 6 },
-  trapCaption: { fontSize: 10, color: '#4A5080', marginTop: 2 },
+  rimHole: {
+    width: 108, height: 20, borderRadius: 54, overflow: 'hidden',
+    backgroundColor: 'rgba(8,12,30,0.5)', justifyContent: 'flex-end',
+  },
+  bowlWater: { width: '100%', borderRadius: 4 },
+  // Wide at the top (matches the rim), tapering in toward the pedestal —
+  // this taper is what makes it read as a bowl instead of a rectangle.
+  bowlBody: {
+    width: 116, height: 46, marginTop: -6,
+    borderBottomLeftRadius: 20, borderBottomRightRadius: 20,
+    borderWidth: 3, borderTopWidth: 0, borderColor: PORCELAIN,
+    backgroundColor: 'rgba(232,236,245,0.04)',
+  },
+  pedestal: {
+    width: 46, height: 22, marginTop: -2,
+    borderBottomLeftRadius: 6, borderBottomRightRadius: 6,
+    borderWidth: 3, borderTopWidth: 0, borderColor: PORCELAIN,
+    backgroundColor: 'rgba(232,236,245,0.04)',
+  },
+
+  trapRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+  trapPipe: { width: 22, height: 9, borderWidth: 2, borderColor: 'rgba(255,255,255,0.2)', borderRadius: 5 },
 });
