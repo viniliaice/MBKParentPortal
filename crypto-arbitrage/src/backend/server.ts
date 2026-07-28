@@ -132,31 +132,47 @@ async function fetchWithTimeout(url: string, options: any = {}, timeoutMs = 2500
 
 // Exchange Fetchers mapping
 async function fetchBinance(): Promise<NormalizedTicker[]> {
-  const data = await fetchWithTimeout('https://api.binance.com/api/v3/ticker/bookTicker', {}, 2500);
-  const tickers: NormalizedTicker[] = [];
-  const symbolMap: { [key: string]: string } = {
-    'BTCUSDT': 'BTC/USDT',
-    'ETHUSDT': 'ETH/USDT',
-    'SOLUSDT': 'SOL/USDT',
-    'XRPUSDT': 'XRP/USDT',
-    'DOGEUSDT': 'DOGE/USDT'
-  };
-  
-  if (Array.isArray(data)) {
-    data.forEach((item) => {
-      const standardPair = symbolMap[item.symbol];
-      if (standardPair) {
-        tickers.push({
-          exchange: 'binance',
-          symbol: standardPair,
-          bid: parseFloat(item.bidPrice),
-          ask: parseFloat(item.askPrice),
-          timestamp: Date.now()
+  const endpoints = [
+    'https://api.binance.com/api/v3/ticker/bookTicker',
+    'https://api1.binance.com/api/v3/ticker/bookTicker',
+    'https://api2.binance.com/api/v3/ticker/bookTicker',
+    'https://api3.binance.com/api/v3/ticker/bookTicker'
+  ];
+
+  let lastError: any = null;
+  for (const url of endpoints) {
+    try {
+      const data = await fetchWithTimeout(url, {}, 2500);
+      const tickers: NormalizedTicker[] = [];
+      const symbolMap: { [key: string]: string } = {
+        'BTCUSDT': 'BTC/USDT',
+        'ETHUSDT': 'ETH/USDT',
+        'SOLUSDT': 'SOL/USDT',
+        'XRPUSDT': 'XRP/USDT',
+        'DOGEUSDT': 'DOGE/USDT'
+      };
+      
+      if (Array.isArray(data)) {
+        data.forEach((item) => {
+          const standardPair = symbolMap[item.symbol];
+          if (standardPair) {
+            tickers.push({
+              exchange: 'binance',
+              symbol: standardPair,
+              bid: parseFloat(item.bidPrice),
+              ask: parseFloat(item.askPrice),
+              timestamp: Date.now()
+            });
+          }
         });
       }
-    });
+      return tickers;
+    } catch (err: any) {
+      lastError = err;
+      // Silent warning, we try fallback URLs
+    }
   }
-  return tickers;
+  throw lastError || new Error('All Binance endpoints failed');
 }
 
 async function fetchCoinbase(pair: string): Promise<NormalizedTicker> {
@@ -194,32 +210,46 @@ async function fetchOKX(pair: string): Promise<NormalizedTicker> {
 }
 
 async function fetchBybit(): Promise<NormalizedTicker[]> {
-  const data = await fetchWithTimeout('https://api.bybit.com/v5/market/tickers?category=spot', {}, 2500);
-  const tickers: NormalizedTicker[] = [];
-  const symbolMap: { [key: string]: string } = {
-    'BTCUSDT': 'BTC/USDT',
-    'ETHUSDT': 'ETH/USDT',
-    'SOLUSDT': 'SOL/USDT',
-    'XRPUSDT': 'XRP/USDT',
-    'DOGEUSDT': 'DOGE/USDT'
-  };
-  
-  if (data && data.retCode === 0 && data.result && Array.isArray(data.result.list)) {
-    const serverTime = data.time ? parseInt(data.time) : Date.now();
-    data.result.list.forEach((item: any) => {
-      const standardPair = symbolMap[item.symbol];
-      if (standardPair) {
-        tickers.push({
-          exchange: 'bybit',
-          symbol: standardPair,
-          bid: parseFloat(item.bid1Price),
-          ask: parseFloat(item.ask1Price),
-          timestamp: serverTime
+  const endpoints = [
+    'https://api.bybit.com/v5/market/tickers?category=spot',
+    'https://api.bytick.com/v5/market/tickers?category=spot'
+  ];
+
+  let lastError: any = null;
+  for (const url of endpoints) {
+    try {
+      const data = await fetchWithTimeout(url, {}, 2500);
+      const tickers: NormalizedTicker[] = [];
+      const symbolMap: { [key: string]: string } = {
+        'BTCUSDT': 'BTC/USDT',
+        'ETHUSDT': 'ETH/USDT',
+        'SOLUSDT': 'SOL/USDT',
+        'XRPUSDT': 'XRP/USDT',
+        'DOGEUSDT': 'DOGE/USDT'
+      };
+      
+      if (data && data.retCode === 0 && data.result && Array.isArray(data.result.list)) {
+        const serverTime = data.time ? parseInt(data.time) : Date.now();
+        data.result.list.forEach((item: any) => {
+          const standardPair = symbolMap[item.symbol];
+          if (standardPair) {
+            tickers.push({
+              exchange: 'bybit',
+              symbol: standardPair,
+              bid: parseFloat(item.bid1Price),
+              ask: parseFloat(item.ask1Price),
+              timestamp: serverTime
+            });
+          }
         });
       }
-    });
+      return tickers;
+    } catch (err: any) {
+      lastError = err;
+      // try next fallback
+    }
   }
-  return tickers;
+  throw lastError || new Error('All Bybit endpoints failed');
 }
 
 async function fetchKuCoin(pair: string): Promise<NormalizedTicker> {
