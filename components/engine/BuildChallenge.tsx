@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring, withSequence, withTiming } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import ParticleBurst from '@/components/engine/primitives/ParticleBurst';
+import { playSound } from '@/lib/audio/soundEngine';
 import type { BuildChallengeConfig } from '@/data/learningData';
 
 interface Props {
@@ -62,11 +63,13 @@ export default function BuildChallenge({ config, submitted, onComplete, accentCo
     setChecked(isCorrect);
     if (isCorrect) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      playSound('successChime');
       successGlow.value = withSequence(withTiming(1, { duration: 200 }), withTiming(0.3, { duration: 500 }));
       setBurstTrigger(n => n + 1);
       onComplete(true);
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      playSound('mistakeBuzz');
       shake.value = withSequence(
         withTiming(-10, { duration: 60 }),
         withTiming(10, { duration: 90 }),

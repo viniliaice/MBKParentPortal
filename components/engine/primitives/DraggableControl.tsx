@@ -5,6 +5,7 @@ import Animated, {
   useSharedValue, useAnimatedStyle, withSpring, withTiming, withRepeat, runOnJS, Easing,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
+import { playSound } from '@/lib/audio/soundEngine';
 
 interface Props {
   label: string;
@@ -55,6 +56,10 @@ export default function DraggableControl({
 
   const fireHaptic = () => {
     Haptics.selectionAsync();
+    // A tiny tick per crossed 10%-band — same cadence as the haptic detent
+    // so touch and sound reinforce the same discrete "step" feeling
+    // instead of firing on unrelated events.
+    playSound('uiTick', 0.18);
   };
 
   const setDraggingJS = (v: boolean) => setDragging(v);
@@ -129,7 +134,34 @@ export default function DraggableControl({
         <Animated.Text style={[styles.valueLabel, { color }, valueStyle]}>{Math.round(displayValue)}{unit ?? ''}</Animated.Text>
       </View>
       <GestureDetector gesture={pan}>
-        <View style={styles.track} onLayout={onLayout}>
+        <View
+          style={styles.track}
+          onLayout={onLayout}
+          accessible
+          accessibilityRole="adjustable"
+          accessibilityLabel={label}
+          accessibilityValue={{ min, max, now: Math.round(displayValue) }}
+          accessibilityActions={[
+            { name: 'increment', label: 'Increase' },
+            { name: 'decrement', label: 'Decrease' },
+          ]}
+          onAccessibilityAction={(event) => {
+            // Screen-reader increment/decrement can't drag the gesture
+            // track directly, so it steps by 5% of the range and reports
+            // through the same reportChange path a real drag would use —
+            // keeping VoiceOver/TalkBack users able to actually operate
+            // every sandbox variable, not just see its current value.
+            const step = (max - min) * 0.05;
+            const current = min + progress.value * (max - min);
+            const next = event.nativeEvent.actionName === 'increment'
+              ? Math.min(max, current + step)
+              : Math.max(min, current - step);
+            const p = (next - min) / (max - min);
+            progress.value = p;
+            setDisplayValue(next);
+            onChange(next);
+          }}
+        >
           <View style={styles.trackBg} />
           <Animated.View style={[styles.trackFill, fillStyle, fillGlowStyle, { backgroundColor: color }]} />
           <Animated.View style={[styles.handleGlow, glowRingStyle, handleStyle, { backgroundColor: color }]} />

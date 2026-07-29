@@ -72,7 +72,7 @@ export default function GaugeMeter({ value, color, label, unit, size = 88 }: Pro
   });
 
   return (
-    <View style={styles.wrap}>
+    <View style={styles.wrap} accessible accessibilityLabel={`${label}: ${Math.round(clamped)}${unit ?? ''}`}>
       <View style={[styles.arc, { width: size, height: radius + 6, borderColor: 'rgba(255,255,255,0.12)' }]}>
         {ticks.map((t, i) => (
           <View

@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming, withDelay } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
+import { playSound } from '@/lib/audio/soundEngine';
 import type { GuidedDiscoveryConfig } from '@/data/learningData';
 
 interface Props {
@@ -35,6 +36,7 @@ export default function GuidedDiscovery({ config, submitted, onComplete, accentC
   const reveal = (id: string) => {
     if (revealed.has(id)) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    playSound('discoveryPing');
     setRevealed(prev => new Set(prev).add(id));
   };
 

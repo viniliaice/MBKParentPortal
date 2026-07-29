@@ -30,7 +30,7 @@ export default function TemperatureIndicator({ celsius, min = -10, max = 40, lab
   }));
 
   return (
-    <View style={styles.wrap}>
+    <View style={styles.wrap} accessible accessibilityLabel={`${label ?? 'Temperature'}: ${Math.round(celsius)} degrees Celsius`}>
       <View style={[styles.stem, { height: stemHeight - 14 }]}>
         <Animated.View style={[styles.fill, fillStyle]} />
       </View>

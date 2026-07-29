@@ -7,6 +7,7 @@ import Animated, {
 import * as Haptics from 'expo-haptics';
 import ParticleBurst from '@/components/engine/primitives/ParticleBurst';
 import SceneCamera from '@/components/engine/primitives/SceneCamera';
+import { playSound, type SoundId } from '@/lib/audio/soundEngine';
 import type { CauseEffectExplorerConfig } from '@/data/learningData';
 
 interface Props {
@@ -85,9 +86,11 @@ export default function CauseEffectExplorer({ config, submitted, onComplete, acc
         setSettledIndex(toIdx);
         setFurthestReached(f => Math.max(f, toIdx));
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        if (stage.soundId) playSound(stage.soundId as SoundId);
         if (toIdx === stages.length - 1) {
           setBurstTrigger(n => n + 1);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          playSound('successChime');
         }
       }
     }, 16);

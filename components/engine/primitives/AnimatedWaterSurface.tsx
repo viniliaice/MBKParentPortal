@@ -3,6 +3,7 @@ import { View, StyleSheet } from 'react-native';
 import Animated, {
   useSharedValue, useAnimatedStyle, withTiming, withRepeat, Easing, interpolate, Extrapolation,
 } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 
 interface Props {
   /** 0-100 fill level, animates smoothly to new values */
@@ -70,9 +71,24 @@ export default function AnimatedWaterSurface({ level, color, borderRadius = 0, t
 
   return (
     <Animated.View style={[styles.body, bodyStyle, { backgroundColor: `${color}CC`, borderRadius }, style]}>
+      {/* A subtle brightness gradient from the surface downward reads as
+          light catching the top of the water — cheap, no extra draw calls
+          beyond one more LinearGradient layer, but it's the difference
+          between a flat color block and something that looks wet. */}
+      <LinearGradient
+        colors={[`${color}00`, `${color}33`, `${color}00`]}
+        locations={[0, 0.08, 0.4]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
       <View style={styles.surfaceClip}>
         <Animated.View style={[styles.waveBand, wave1Style, { backgroundColor: `${color}55` }]} />
         <Animated.View style={[styles.waveBand, styles.waveBandOffset, wave2Style, { backgroundColor: `${color}33` }]} />
+        {/* A thin, bright specular line right at the waterline — the
+            "highlight" a real liquid surface catches from above. */}
+        <View style={[styles.specularLine, { backgroundColor: 'rgba(255,255,255,0.4)' }]} />
       </View>
       <Animated.View style={[styles.swirl, swirlStyle, { borderColor: `#FFFFFF` }]} />
     </Animated.View>
@@ -84,6 +100,7 @@ const styles = StyleSheet.create({
   surfaceClip: { position: 'absolute', top: 0, left: 0, right: 0, height: 10, overflow: 'hidden' },
   waveBand: { position: 'absolute', top: -3, left: -20, right: -20, height: 14, borderRadius: 10 },
   waveBandOffset: { top: 1 },
+  specularLine: { position: 'absolute', top: 0, left: 0, right: 0, height: 1.5 },
   swirl: {
     position: 'absolute', top: '20%', left: '30%', width: 26, height: 26, borderRadius: 13,
     borderWidth: 2, borderStyle: 'dashed',

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { playSound } from '@/lib/audio/soundEngine';
 import type { PredictionChallengeConfig } from '@/data/learningData';
 
 interface Props {
@@ -27,6 +28,8 @@ export default function PredictionChallenge({ config, submitted, onComplete, acc
   const lockIn = (id: string) => {
     if (revealed) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const correct = id === config.correctOptionId;
+    playSound(correct ? 'discoveryPing' : 'mistakeBuzz');
     setGuess(id);
     setRevealed(true);
   };
@@ -36,6 +39,7 @@ export default function PredictionChallenge({ config, submitted, onComplete, acc
   const handleComplete = () => {
     if (submitted || !revealed) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    playSound('successChime');
     onComplete(true);
   };
 

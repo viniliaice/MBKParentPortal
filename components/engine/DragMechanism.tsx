@@ -6,6 +6,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { playSound } from '@/lib/audio/soundEngine';
 import type { DragMechanismConfig } from '@/data/learningData';
 
 interface Props {
@@ -68,9 +69,15 @@ export default function DragMechanism({ config, color, describe, onPositionChang
     if (band !== lastHapticBand.current) {
       lastHapticBand.current = band;
       Haptics.selectionAsync();
+      playSound('uiTick', 0.16);
     }
     if (p >= 99 || p <= 1) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      // The float valve physically seating/opening fully is a real
+      // mechanical endpoint (the valve either fully shuts or fully
+      // opens) — a click reads as "you found the limit," distinct from
+      // the softer per-band tick used while still moving freely.
+      playSound('valveClick');
     }
   };
 

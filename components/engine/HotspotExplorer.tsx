@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Modal, Pressable } from 'reac
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
+import { playSound } from '@/lib/audio/soundEngine';
 import type { HotspotExplorerConfig } from '@/data/learningData';
 
 interface Props {
@@ -31,6 +32,7 @@ export default function HotspotExplorer({ config, submitted, onComplete, accentC
 
   const openHotspot = (id: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    playSound('discoveryPing');
     setActive(id);
     setViewed(prev => new Set(prev).add(id));
   };

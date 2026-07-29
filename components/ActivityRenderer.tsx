@@ -8,6 +8,7 @@ import { Activity } from '@/data/learningData';
 import PressableTile from '@/components/PressableTile';
 import ExplorableActivity from '@/components/explorables/ExplorableActivity';
 import ParameterExperiment from '@/components/engine/ParameterExperiment';
+import PhysicsSandbox from '@/components/engine/PhysicsSandbox';
 import CauseEffectExplorer from '@/components/engine/CauseEffectExplorer';
 import BuildChallenge from '@/components/engine/BuildChallenge';
 import GuidedDiscovery from '@/components/engine/GuidedDiscovery';
@@ -17,8 +18,10 @@ import EngineDragMechanism from '@/components/engine/DragMechanism';
 import SuccessCelebration from '@/components/engine/primitives/SuccessCelebration';
 import {
   physicsSceneRegistry, physicsTankSceneRegistry, physicsDescribeRegistry, physicsNarrateRegistry,
+  physicsSandboxModelRegistry, physicsSandboxSceneRegistry, physicsSandboxNarrateRegistry,
 } from '@/components/engine/registry/physicsSceneRegistry';
 import { isExploreType } from '@/constants/activityTypes';
+import { playSound } from '@/lib/audio/soundEngine';
 
 /*
  * ---------------------------------------------------------------------
@@ -30,10 +33,13 @@ import { isExploreType } from '@/constants/activityTypes';
  * predictionChallenge, interactiveTimeline, hotspotExplorer, measurementTool,
  * dragMechanism, flowSimulation). Several of those names describe the exact
  * same underlying interaction shape, so rather than building 15 near-duplicate
- * components, each name resolves to one of 6 real reusable components below:
+ * components, each name resolves to one of 7 real reusable components below:
  *
- *   parameterExperiment, interactiveSimulation, physicsPlayground,
- *   measurementTool          -> ParameterExperiment  (drag N vars, watch M readouts)
+ *   parameterExperiment, interactiveSimulation,
+ *   measurementTool          -> ParameterExperiment  (drag N vars, watch M linearly-derived readouts)
+ *   physicsPlayground        -> PhysicsSandbox        (drag N vars into a REAL continuous simulation loop —
+ *                                                       every variable can influence every other one through
+ *                                                       the model's own physics, not a fixed linear mapping)
  *   causeEffectExplorer, animatedProcess,
  *   interactiveTimeline, flowSimulation
  *                            -> CauseEffectExplorer   (press trigger, watch staged sequence)
@@ -52,7 +58,7 @@ import { isExploreType } from '@/constants/activityTypes';
  * ---------------------------------------------------------------------
  */
 
-const PARAMETER_EXPERIMENT_TYPES = new Set(['parameterExperiment', 'interactiveSimulation', 'physicsPlayground', 'measurementTool']);
+const PARAMETER_EXPERIMENT_TYPES = new Set(['parameterExperiment', 'interactiveSimulation', 'measurementTool']);
 const CAUSE_EFFECT_TYPES = new Set(['causeEffectExplorer', 'animatedProcess', 'interactiveTimeline', 'flowSimulation']);
 const BUILD_TYPES = new Set(['buildChallenge', 'systemBuilder']);
 const HOTSPOT_TYPES = new Set(['hotspotExplorer', 'interactiveDiagram']);
@@ -76,10 +82,12 @@ export default function ActivityRenderer({ activity, onCorrect, onIncorrect, acc
     setIsCorrect(correct);
     if (correct) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      playSound('successChime');
       setCelebrationTrigger(n => n + 1);
       onCorrect();
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      playSound('mistakeBuzz');
       onIncorrect();
     }
   };
@@ -135,6 +143,29 @@ export default function ActivityRenderer({ activity, onCorrect, onIncorrect, acc
               : undefined}
             narrate={activity.parameterExperimentConfig.narrateKey
               ? (params) => physicsNarrateRegistry[activity.parameterExperimentConfig!.narrateKey!]?.(params) ?? ''
+              : undefined}
+          />
+        )
+        : activity.type === 'physicsPlayground' && activity.physicsSandboxConfig
+        ? (
+          <PhysicsSandbox
+            config={activity.physicsSandboxConfig}
+            submitted={submitted}
+            onComplete={handleResult}
+            accentColor={accentColor}
+            model={physicsSandboxModelRegistry[activity.physicsSandboxConfig.modelKey]}
+            renderScene={(state) => physicsSandboxSceneRegistry[activity.physicsSandboxConfig!.sceneKey]?.(state, accentColor)}
+            computeReadout={(state, readoutId) => {
+              const s = state as Record<string, number>;
+              // Sandbox readouts read directly off named fields of the
+              // model's state object (tankPressure, inflowRate, etc.) by
+              // id — the id in data/learningData.ts's PhysicsSandboxReadout
+              // is the state field name itself, keeping the mapping
+              // declarative without a second per-lesson lookup table.
+              return typeof s[readoutId] === 'number' ? (s[readoutId] as number) : 0;
+            }}
+            narrate={activity.physicsSandboxConfig.narrateKey
+              ? (state, inputs) => physicsSandboxNarrateRegistry[activity.physicsSandboxConfig!.narrateKey!]?.(state as any, inputs) ?? ''
               : undefined}
           />
         )

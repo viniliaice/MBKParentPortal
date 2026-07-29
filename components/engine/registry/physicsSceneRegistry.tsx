@@ -1,16 +1,20 @@
 import React from 'react';
 import ToiletCutawayDiagram from '@/components/engine/scenes/physics/ToiletCutawayDiagram';
 import ToiletTankDiagram from '@/components/engine/scenes/physics/ToiletTankDiagram';
+import ToiletSandboxScene from '@/components/engine/scenes/physics/ToiletSandboxScene';
+import { toiletPhysicsModel } from '@/components/engine/registry/toiletPhysicsModel';
+import type { ToiletSimState } from '@/lib/physics/toiletSimulation';
+import type { PhysicsModel } from '@/lib/physics/PhysicsModel';
 
 /*
  * Resolves the plain string keys stored in data/learningData.ts (sceneKey,
- * narrateKey, describeKey) into actual render functions / text generators.
- * This indirection is what keeps the curriculum data file pure and
- * serializable (per its existing convention — see ExplorableConfig) while
- * still letting each engine activity render a real, subject-specific
- * illustration. A future Biology module would add its own
- * biologySceneRegistry.tsx next to this one; ActivityRenderer never needs
- * to change.
+ * narrateKey, describeKey, modelKey) into actual render functions / text
+ * generators / simulation models. This indirection is what keeps the
+ * curriculum data file pure and serializable (per its existing convention
+ * — see ExplorableConfig) while still letting each engine activity render
+ * a real, subject-specific illustration and run a real simulation model.
+ * A future Biology module would add its own biologySceneRegistry.tsx next
+ * to this one; ActivityRenderer never needs to change.
  */
 
 export const physicsSceneRegistry: Record<string, (progress: number, color: string) => React.ReactNode> = {
@@ -37,5 +41,41 @@ export const physicsNarrateRegistry: Record<string, (params: Record<string, numb
     if (h < 50) return 'Watch closely: as you drag the float up, both the refill speed and the valve pressure fall together. They\'re controlled by the exact same mechanism.';
     if (h < 85) return 'Almost there — the valve is nearly shut, so almost no water is flowing and pressure is nearly zero.';
     return 'You found it: at full height the valve seals completely. Zero flow, zero pressure — this is exactly how a tank avoids overflowing without anyone watching it.';
+  },
+};
+
+/**
+ * Sandbox-mode registries: a PhysicsSandbox activity resolves modelKey ->
+ * a PhysicsModel implementation, and sceneKey -> a renderer of that
+ * model's own state type. Kept separate from physicsSceneRegistry above
+ * (which renders a plain 0-100 progress number) since a sandbox scene
+ * needs the model's full state shape, not a single number.
+ */
+export const physicsSandboxModelRegistry: Record<string, PhysicsModel<any, any>> = {
+  toilet: toiletPhysicsModel,
+};
+
+export const physicsSandboxSceneRegistry: Record<string, (state: any, color: string) => React.ReactNode> = {
+  toiletSandbox: (state: ToiletSimState, color: string) => <ToiletSandboxScene state={state} color={color} />,
+};
+
+export const physicsSandboxNarrateRegistry: Record<string, (state: ToiletSimState, inputs: Record<string, number>) => string> = {
+  toiletSandbox: (state, inputs) => {
+    if (state.siphonActive) {
+      return `SIPHON RUNNING — the trapway is completely full, pulling water out at ${Math.round(state.outflowRate)}% flow. Bigger pipes make this happen faster.`;
+    }
+    if (state.refilling) {
+      if (state.overflowRisk > 0.05) {
+        return `Refilling, but the float cutoff is set so high (${Math.round(inputs.floatCutoff)}%) there's barely any safety margin before overflow — try lowering it.`;
+      }
+      return `Refilling now. The float rises with the tank and will shut the valve at ${Math.round(inputs.floatCutoff)}%.`;
+    }
+    if (state.valveOpen) {
+      return `Flushing — pressure at the base of the tank is ${Math.round(state.tankPressure)}%, pushing water into the bowl at ${Math.round(state.inflowRate)}% flow.`;
+    }
+    if (inputs.leakSize > 40) {
+      return 'A leak this size drains the tank faster than it can refill — try shrinking it and watch the refill behave normally again.';
+    }
+    return 'Everything at rest. Try the sliders — every one of them changes how the flush behaves.';
   },
 };

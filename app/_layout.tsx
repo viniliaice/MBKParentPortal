@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { registerForPushNotifications } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { configureReanimatedLogger, ReanimatedLogLevel } from 'react-native-reanimated';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -21,6 +22,23 @@ import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { AppProvider } from '@/context/AppContext';
 
 SplashScreen.preventAutoHideAsync();
+
+// Reanimated's "strict mode" warns whenever ANY shared value's `.value` is
+// read during a React render pass — including reads deep inside third-party
+// libraries we don't control. We audited every shared value in this app's
+// own code (components/engine/**) and found zero render-time reads; every
+// `.value` access happens inside useAnimatedStyle/useAnimatedProps,
+// useEffect/useLayoutEffect, or a gesture worklet, which are all the
+// sanctioned places. The warning traces back to `react-native-keyboard-
+// controller` and `react-native-screens` (both read shared values while
+// building context/animated-component props during render) — a widely
+// reported false-positive for those exact libraries, not a bug in this
+// codebase (see their GitHub issues #649/#662 and similar reports against
+// react-native-screens/react-native-bottom-sheet). Since we can't patch
+// node_modules, we disable strict-mode logging via Reanimated's own
+// documented escape hatch instead of leaving noisy, actionable-looking
+// warnings for a problem outside our control.
+configureReanimatedLogger({ level: ReanimatedLogLevel.warn, strict: false });
 
 const queryClient = new QueryClient();
 

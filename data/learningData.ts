@@ -103,10 +103,11 @@ export interface SimulationReadout {
 /**
  * Drag one or more parameters, watch live readouts react. Powers
  * `parameterExperiment`, and is reused (via components/engine/InteractiveSimulation.tsx
- * and MeasurementTool.tsx aliases) for `interactiveSimulation`, `physicsPlayground`,
- * and `measurementTool` — those three names describe the same interaction
- * shape (drag a variable, observe a live measurement) so they share one
- * battle-tested component instead of three near-duplicate implementations.
+ * and MeasurementTool.tsx aliases) for `interactiveSimulation` and
+ * `measurementTool` — those names describe the same interaction shape
+ * (drag a variable, observe a live measurement derived from a fixed linear
+ * mapping) so they share one battle-tested component instead of
+ * near-duplicate implementations.
  */
 export interface ParameterExperimentConfig {
   parameters: SimulationParameter[];
@@ -117,6 +118,46 @@ export interface ParameterExperimentConfig {
   narrateKey?: string;
   goalParameterId?: string;
   goalThresholdPct?: number;
+}
+
+/** A live readout in a PhysicsSandbox, resolved against the sandbox's live simulation state (not a linear mapping — see PhysicsSandboxConfig). */
+export interface PhysicsSandboxReadout {
+  id: string;
+  kind: ReadoutKind;
+  label: string;
+  unit?: string;
+  color: string;
+}
+
+/**
+ * A free-play physics sandbox: N continuous parameters drive a real,
+ * continuously-stepped simulation model (not a scripted curve) whose
+ * output feeds live readouts and a rendered scene every tick. Every
+ * parameter can influence every other system through the model's own
+ * physics, so changing pipe diameter changes flow rate changes siphon
+ * timing changes refill duration, etc. — actual cross-variable behavior
+ * instead of independent linear mappings per readout (contrast with
+ * ParameterExperimentConfig above, which is intentionally simpler).
+ *
+ * `modelKey` and `sceneKey` are resolved by the caller's registry (see
+ * components/engine/registry/physicsSceneRegistry.tsx's
+ * physicsModelRegistry/physicsSandboxSceneRegistry) to a PhysicsModel
+ * implementation and a renderer respectively, keeping this config plain,
+ * serializable data — consistent with every other config in this file.
+ * Powers `physicsPlayground`; a future Biology "ecosystem sandbox" or
+ * Chemistry "reaction rate sandbox" lesson would define its own model +
+ * scene and reuse this exact component and UI.
+ */
+export interface PhysicsSandboxConfig {
+  parameters: SimulationParameter[];
+  readouts: PhysicsSandboxReadout[];
+  modelKey: string;
+  sceneKey: string;
+  narrateKey?: string;
+  triggerLabel?: string;
+  triggerIcon?: string;
+  /** minimum seconds of free play (any interaction) before "I understand this" unlocks — encourages exploration over a quick tap-through. */
+  minPlaySeconds?: number;
 }
 
 export interface CameraShot {
@@ -140,6 +181,8 @@ export interface CauseEffectStage {
   durationMs: number;
   /** where the camera pans/zooms to while this stage plays and while it's paused afterward */
   camera: CameraShot;
+  /** optional sound cue played once this stage's transition settles — keyed by SoundId from lib/audio/soundEngine.ts so any future staged diagram (a heartbeat cycle, a chemical reaction) can cue its own audio without touching CauseEffectExplorer.tsx itself. */
+  soundId?: string;
 }
 
 /**
@@ -273,6 +316,7 @@ export interface Activity {
   max?: number;
   explorableConfig?: ExplorableConfig;
   parameterExperimentConfig?: ParameterExperimentConfig;
+  physicsSandboxConfig?: PhysicsSandboxConfig;
   causeEffectConfig?: CauseEffectExplorerConfig;
   buildChallengeConfig?: BuildChallengeConfig;
   guidedDiscoveryConfig?: GuidedDiscoveryConfig;
@@ -1068,7 +1112,8 @@ const householdPhysics: Topic = {
                 caption: 'At rest, gravity holds the tank full above and a resting pool of water sealed in the bowl below — that seal is what stops sewer gas from rising back into the room.' },
               { id: 's1', title: 'Handle Pressed', toValue: 9, durationMs: 900,
                 camera: { scale: 1.9, focusX: 27, focusY: 31 },
-                caption: 'Pressing the handle lifts the flush valve at the bottom of the tank.' },
+                caption: 'Pressing the handle lifts the flush valve at the bottom of the tank.',
+                soundId: 'valveClick' },
               { id: 's2', title: 'Valve Opens', toValue: 20, durationMs: 1400,
                 camera: { scale: 1.9, focusX: 27, focusY: 31 },
                 caption: 'The flush valve is fully open now. With nothing holding it back, gravity pulls the tank\'s water straight down into the bowl.' },
@@ -1080,16 +1125,19 @@ const householdPhysics: Topic = {
                 caption: 'The water has reached the top of the trapway\'s rising leg. As it spills over, pressure inside that narrow pipe starts to build.' },
               { id: 's5', title: 'Siphon Starts', toValue: 60, durationMs: 2000,
                 camera: { scale: 2.4, focusX: 60, focusY: 53 },
-                caption: 'SIPHON! The rising leg of the trapway is now completely full of water, so the whole pipe suddenly acts like a bent straw — pulling water through continuously instead of just trickling over the top.' },
+                caption: 'SIPHON! The rising leg of the trapway is now completely full of water, so the whole pipe suddenly acts like a bent straw — pulling water through continuously instead of just trickling over the top.',
+                soundId: 'flushWhoosh' },
               { id: 's6', title: 'Rapid Bowl Evacuation', toValue: 75, durationMs: 1400,
                 camera: { scale: 1.7, focusX: 63, focusY: 66 },
                 caption: 'With the siphon running, the bowl empties in a rush — everything gets pulled down the trapway and out through the outlet pipe.' },
               { id: 's7', title: 'Tank Refill', toValue: 88, durationMs: 2200,
                 camera: { scale: 1.9, focusX: 47, focusY: 15 },
-                caption: 'Air finally breaks the siphon, the flush valve drops shut, and the float valve lets fresh water start refilling the tank.' },
+                caption: 'Air finally breaks the siphon, the flush valve drops shut, and the float valve lets fresh water start refilling the tank.',
+                soundId: 'waterDrip' },
               { id: 's8', title: 'Float Valve Closes', toValue: 100, durationMs: 1400,
                 camera: { scale: 1.9, focusX: 47, focusY: 15 },
-                caption: 'As the tank refills, the float rises with the water. Once it reaches the top, it seals the float valve completely — using gravity and buoyancy alone to stop the water exactly on time.' },
+                caption: 'As the tank refills, the float rises with the water. Once it reaches the top, it seals the float valve completely — using gravity and buoyancy alone to stop the water exactly on time.',
+                soundId: 'valveClick' },
             ],
           },
         },
@@ -1158,6 +1206,40 @@ const householdPhysics: Topic = {
             ],
             successMessage: 'Fixed it! A worn flapper and a mis-set float valve were the only real problems — no need to replace anything else.',
             failureMessage: 'Not quite — that combination either misses a required part or replaces something that was already working fine.',
+          },
+        },
+        // --- Free-play sandbox: real continuous simulation, no scripted animation ---
+        // Every value here is *read live* off lib/physics/toiletSimulation.ts's
+        // ToiletSimState each tick — dragging any slider changes the actual
+        // model inputs (see PhysicsSandbox.tsx), so this is the "play with the
+        // toilet for five minutes" capstone: the flush, siphon speed, refill
+        // time, and overflow risk all genuinely respond to every parameter at
+        // once instead of replaying a fixed sequence.
+        {
+          id: 'phy1_sandbox', type: 'physicsPlayground', difficulty: 3,
+          question: 'This is a real toilet simulator — not a recording. Change anything, then press Flush and see what actually happens.',
+          hint: 'Try a tiny pipe with a strong flush, or a huge leak with a low float cutoff — every combination behaves differently.',
+          options: [], correctAnswer: 'explored',
+          physicsSandboxConfig: {
+            modelKey: 'toilet',
+            sceneKey: 'toiletSandbox',
+            narrateKey: 'toiletSandbox',
+            triggerLabel: 'Flush',
+            triggerIcon: 'water',
+            minPlaySeconds: 12,
+            parameters: [
+              { id: 'flushForce', label: 'Flush force', unit: '%', min: 5, max: 100, defaultValue: 60, color: '#22D3EE' },
+              { id: 'pipeDiameter', label: 'Pipe diameter', unit: '%', min: 10, max: 100, defaultValue: 55, color: '#3D5AFE' },
+              { id: 'leakSize', label: 'Leak size', unit: '%', min: 0, max: 80, defaultValue: 0, color: '#FF5370' },
+              { id: 'floatCutoff', label: 'Float cutoff height', unit: '%', min: 30, max: 98, defaultValue: 82, color: '#F6C90E' },
+              { id: 'tankVolume', label: 'Tank volume', unit: '%', min: 10, max: 100, defaultValue: 55, color: '#2ECC71' },
+              { id: 'gravity', label: 'Gravity strength', unit: '%', min: 20, max: 250, defaultValue: 100, color: '#FF8A65' },
+            ],
+            readouts: [
+              { id: 'tankPressure', kind: 'gauge', label: 'Tank Pressure', color: '#22D3EE' },
+              { id: 'outflowRate', kind: 'gauge', label: 'Outflow Rate', color: '#3D5AFE' },
+              { id: 'tankLevel', kind: 'gauge', label: 'Tank Level', unit: '%', color: '#2ECC71' },
+            ],
           },
         },
         // --- Knowledge Check: existing activity types, unchanged ---
