@@ -3,13 +3,13 @@
     "name": "MBK Parent Portal",
     "slug": "MBKParentPortal",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "scheme": "mobile",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "icon": "./assets/logo.png",
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": true
     },
     "android": {
       "package": "com.abdurahmankamal.MBKParentPortal",

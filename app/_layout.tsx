@@ -20,6 +20,7 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { AppProvider } from '@/context/AppContext';
+import { disposeSoundEngine } from '@/lib/audio/soundEngine';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -50,11 +51,12 @@ function AuthGate() {
   const segments = useSegments();
 
   useEffect(() => {
-    if (loading || segments.length === 0) return;
-    const inTabs = segments[0] === '(tabs)';
+    if (loading) return;
+    const rootSegment = segments[0] as string | undefined;
+    const inTabs = rootSegment === '(tabs)';
     if (!user && inTabs) {
       router.replace('/login');
-    } else if (user && !inTabs && !VALID_SEGMENTS.has(segments[0])) {
+    } else if (user && !inTabs && !VALID_SEGMENTS.has(rootSegment ?? '')) {
       router.replace('/(tabs)');
     }
   }, [user, loading, segments]);
@@ -68,14 +70,8 @@ function RootLayoutNav() {
     (async () => {
       if (Platform.OS === 'web') return;
       const token = await registerForPushNotifications();
-      console.log('📱 PUSH TOKEN:', token);
       if (token && user) {
         await supabase.from('profiles').update({ expo_push_token: token }).eq('id', user.id);
-        console.log('✅ Push token saved to Supabase for user:', user.id);
-      } else if (!token) {
-        console.log('❌ No push token — Firebase may not be configured');
-      } else if (!user) {
-        console.log('⚠️ Got token but no user logged in — token not saved');
       }
     })();
   }, [user]);
@@ -110,6 +106,8 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded, fontError]);
+
+  useEffect(() => disposeSoundEngine, []);
 
   if (!fontsLoaded && !fontError) return null;
 

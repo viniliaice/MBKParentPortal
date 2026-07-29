@@ -131,8 +131,6 @@ export function playSound(id: SoundId, volumeOverride?: number) {
   }
 }
 
-let ambientFading = false;
-
 /** Starts (or resumes) the soft looping room-tone ambient bed. */
 export function playAmbient() {
   if (!soundEnabled) return;
@@ -151,4 +149,18 @@ export function stopAmbient() {
   if (player && player.playing) {
     try { player.pause(); } catch {}
   }
+}
+
+/**
+ * Releases native players when the application root unmounts. The manager is
+ * intentionally cached during a session for instant effects, but it must not
+ * retain native resources beyond that session.
+ */
+export function disposeSoundEngine() {
+  for (const player of players.values()) {
+    try { player.pause(); } catch {}
+    try { player.remove(); } catch {}
+  }
+  players.clear();
+  audioModeConfigured = false;
 }

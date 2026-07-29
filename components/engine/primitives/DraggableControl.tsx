@@ -17,6 +17,7 @@ interface Props {
   onChange: (value: number) => void;
   /** fires once per crossed band, used for haptic "detents" while dragging */
   hapticStep?: number;
+  disabled?: boolean;
 }
 
 /**
@@ -33,25 +34,40 @@ interface Props {
  * silently updating.
  */
 export default function DraggableControl({
-  label, color, min = 0, max = 100, value, unit, onChange, hapticStep = 10,
+  label, color, min = 0, max = 100, value, unit, onChange, hapticStep = 10, disabled = false,
 }: Props) {
   const trackWidth = useSharedValue(0);
   const progress = useSharedValue(value !== undefined ? (value - min) / (max - min) : 0);
   const lastHapticBand = useSharedValue(-1);
+  const lastReportedValue = useSharedValue(Number.NaN);
   const pressScale = useSharedValue(1);
   const idleBreath = useSharedValue(0);
   const glow = useSharedValue(0);
+  const valueScale = useSharedValue(1);
   const [displayValue, setDisplayValue] = React.useState(value ?? min);
   const [dragging, setDragging] = React.useState(false);
 
   useEffect(() => {
     idleBreath.value = withRepeat(withTiming(1, { duration: 1400, easing: Easing.inOut(Easing.sin) }), -1, true);
-  }, []);
+  }, [idleBreath]);
 
-  const reportChange = (p: number) => {
-    const v = min + p * (max - min);
-    setDisplayValue(v);
-    onChange(v);
+  // Keep the native gesture position in sync when a parent resets a control.
+  useEffect(() => {
+    valueScale.value = withSpring(dragging ? 1.08 : 1, { damping: 10, stiffness: 300 });
+  }, [dragging, valueScale]);
+
+  useEffect(() => {
+    const safeRange = max - min;
+    const next = value ?? min;
+    const nextProgress = safeRange > 0 ? Math.max(0, Math.min(1, (next - min) / safeRange)) : 0;
+    progress.value = nextProgress;
+    lastReportedValue.value = Math.round(next);
+    setDisplayValue(next);
+  }, [value, min, max, progress, lastReportedValue]);
+
+  const reportChange = (valueToReport: number) => {
+    setDisplayValue(valueToReport);
+    onChange(valueToReport);
   };
 
   const fireHaptic = () => {
@@ -65,6 +81,7 @@ export default function DraggableControl({
   const setDraggingJS = (v: boolean) => setDragging(v);
 
   const pan = Gesture.Pan()
+    .enabled(!disabled)
     .onBegin((e) => {
       'worklet';
       if (trackWidth.value <= 0) return;
@@ -73,14 +90,24 @@ export default function DraggableControl({
       runOnJS(setDraggingJS)(true);
       const p = Math.max(0, Math.min(1, e.x / trackWidth.value));
       progress.value = p;
-      runOnJS(reportChange)(p);
+      const nextValue = min + p * (max - min);
+      lastReportedValue.value = Math.round(nextValue);
+      runOnJS(reportChange)(nextValue);
     })
     .onUpdate((e) => {
       'worklet';
       if (trackWidth.value <= 0) return;
       const p = Math.max(0, Math.min(1, e.x / trackWidth.value));
       progress.value = p;
-      runOnJS(reportChange)(p);
+      const nextValue = min + p * (max - min);
+      // React only needs a new value when the displayed whole-number value
+      // changes. This keeps a fast gesture on the UI thread instead of
+      // scheduling hundreds of JS renders for sub-pixel motion.
+      const roundedValue = Math.round(nextValue);
+      if (roundedValue !== lastReportedValue.value) {
+        lastReportedValue.value = roundedValue;
+        runOnJS(reportChange)(nextValue);
+      }
       const band = Math.floor(p * 100 / hapticStep);
       if (band !== lastHapticBand.value) {
         lastHapticBand.value = band;
@@ -124,7 +151,7 @@ export default function DraggableControl({
   }));
 
   const valueStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: withSpring(dragging ? 1.08 : 1, { damping: 10, stiffness: 300 }) }],
+    transform: [{ scale: valueScale.value }],
   }));
 
   return (
@@ -141,7 +168,8 @@ export default function DraggableControl({
           accessibilityRole="adjustable"
           accessibilityLabel={label}
           accessibilityValue={{ min, max, now: Math.round(displayValue) }}
-          accessibilityActions={[
+          accessibilityState={{ disabled }}
+          accessibilityActions={disabled ? [] : [
             { name: 'increment', label: 'Increase' },
             { name: 'decrement', label: 'Decrease' },
           ]}

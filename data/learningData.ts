@@ -1,3 +1,5 @@
+import type { SoundId } from '@/lib/audio/soundEngine';
+
 export type ActivityType =
   | 'multipleChoice'
   | 'tapCorrect'
@@ -140,7 +142,7 @@ export interface PhysicsSandboxReadout {
  * ParameterExperimentConfig above, which is intentionally simpler).
  *
  * `modelKey` and `sceneKey` are resolved by the caller's registry (see
- * components/engine/registry/physicsSceneRegistry.tsx's
+ * components/lessonContent/activityRegistry.ts's
  * physicsModelRegistry/physicsSandboxSceneRegistry) to a PhysicsModel
  * implementation and a renderer respectively, keeping this config plain,
  * serializable data — consistent with every other config in this file.
@@ -156,6 +158,8 @@ export interface PhysicsSandboxConfig {
   narrateKey?: string;
   triggerLabel?: string;
   triggerIcon?: string;
+  /** Optional audio feedback selected by the lesson; the engine has no domain-specific sound behavior. */
+  triggerSound?: SoundId;
   /** minimum seconds of free play (any interaction) before "I understand this" unlocks — encourages exploration over a quick tap-through. */
   minPlaySeconds?: number;
 }
@@ -1226,6 +1230,7 @@ const householdPhysics: Topic = {
             narrateKey: 'toiletSandbox',
             triggerLabel: 'Flush',
             triggerIcon: 'water',
+            triggerSound: 'flushWhoosh',
             minPlaySeconds: 12,
             parameters: [
               { id: 'flushForce', label: 'Flush force', unit: '%', min: 5, max: 100, defaultValue: 60, color: '#22D3EE' },

@@ -26,5 +26,6 @@ export const toiletPhysicsModel: PhysicsModel<ToiletSandboxInputs, ToiletSimStat
   createRestingState: (inputs) => createRestingState(toSimInputs(inputs)),
   step: (state, inputs, dtSec) => stepToiletSim(state, toSimInputs(inputs), dtSec),
   trigger: triggerFlush,
+  isActive: (state, inputs) => state.valveOpen || state.siphonActive || state.refilling || (inputs.leakSize > 0 && state.tankLevel > 0),
 };
 

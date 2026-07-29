@@ -17,9 +17,9 @@ import PredictionChallenge from '@/components/engine/PredictionChallenge';
 import EngineDragMechanism from '@/components/engine/DragMechanism';
 import SuccessCelebration from '@/components/engine/primitives/SuccessCelebration';
 import {
-  physicsSceneRegistry, physicsTankSceneRegistry, physicsDescribeRegistry, physicsNarrateRegistry,
-  physicsSandboxModelRegistry, physicsSandboxSceneRegistry, physicsSandboxNarrateRegistry,
-} from '@/components/engine/registry/physicsSceneRegistry';
+  sceneRegistry, parameterSceneRegistry, describeRegistry, narrateRegistry,
+  sandboxModelRegistry, sandboxSceneRegistry, sandboxNarrateRegistry,
+} from '@/components/lessonContent/activityRegistry';
 import { isExploreType } from '@/constants/activityTypes';
 import { playSound } from '@/lib/audio/soundEngine';
 
@@ -139,10 +139,10 @@ export default function ActivityRenderer({ activity, onCorrect, onIncorrect, acc
             onComplete={handleResult}
             accentColor={accentColor}
             renderScene={activity.parameterExperimentConfig.sceneKey
-              ? (params) => physicsTankSceneRegistry[activity.parameterExperimentConfig!.sceneKey!]?.(params, accentColor)
+              ? (params) => parameterSceneRegistry[activity.parameterExperimentConfig!.sceneKey!]?.(params, accentColor)
               : undefined}
             narrate={activity.parameterExperimentConfig.narrateKey
-              ? (params) => physicsNarrateRegistry[activity.parameterExperimentConfig!.narrateKey!]?.(params) ?? ''
+              ? (params) => narrateRegistry[activity.parameterExperimentConfig!.narrateKey!]?.(params) ?? ''
               : undefined}
           />
         )
@@ -153,8 +153,8 @@ export default function ActivityRenderer({ activity, onCorrect, onIncorrect, acc
             submitted={submitted}
             onComplete={handleResult}
             accentColor={accentColor}
-            model={physicsSandboxModelRegistry[activity.physicsSandboxConfig.modelKey]}
-            renderScene={(state) => physicsSandboxSceneRegistry[activity.physicsSandboxConfig!.sceneKey]?.(state, accentColor)}
+            model={sandboxModelRegistry[activity.physicsSandboxConfig.modelKey]}
+            renderScene={(state) => sandboxSceneRegistry[activity.physicsSandboxConfig!.sceneKey]?.(state, accentColor)}
             computeReadout={(state, readoutId) => {
               const s = state as Record<string, number>;
               // Sandbox readouts read directly off named fields of the
@@ -165,7 +165,7 @@ export default function ActivityRenderer({ activity, onCorrect, onIncorrect, acc
               return typeof s[readoutId] === 'number' ? (s[readoutId] as number) : 0;
             }}
             narrate={activity.physicsSandboxConfig.narrateKey
-              ? (state, inputs) => physicsSandboxNarrateRegistry[activity.physicsSandboxConfig!.narrateKey!]?.(state as any, inputs) ?? ''
+              ? (state, inputs) => sandboxNarrateRegistry[activity.physicsSandboxConfig!.narrateKey!]?.(state as any, inputs) ?? ''
               : undefined}
           />
         )
@@ -176,7 +176,7 @@ export default function ActivityRenderer({ activity, onCorrect, onIncorrect, acc
             submitted={submitted}
             onComplete={handleResult}
             accentColor={accentColor}
-            renderScene={(sceneProgress) => physicsSceneRegistry[activity.causeEffectConfig!.sceneKey]?.(sceneProgress, accentColor)}
+            renderScene={(sceneProgress) => sceneRegistry[activity.causeEffectConfig!.sceneKey]?.(sceneProgress, accentColor)}
           />
         )
         : BUILD_TYPES.has(activity.type) && activity.buildChallengeConfig
@@ -190,7 +190,7 @@ export default function ActivityRenderer({ activity, onCorrect, onIncorrect, acc
             submitted={submitted}
             onComplete={handleResult}
             accentColor={accentColor}
-            renderScene={() => physicsSceneRegistry[activity.hotspotConfig!.sceneKey]?.(100, accentColor)}
+            renderScene={() => sceneRegistry[activity.hotspotConfig!.sceneKey]?.(100, accentColor)}
           />
         )
         : activity.type === 'predictionChallenge' && activity.predictionConfig
@@ -201,7 +201,7 @@ export default function ActivityRenderer({ activity, onCorrect, onIncorrect, acc
             onComplete={handleResult}
             accentColor={accentColor}
             renderScene={activity.predictionConfig.sceneKey
-              ? () => physicsSceneRegistry[activity.predictionConfig!.sceneKey!]?.(100, accentColor)
+              ? () => sceneRegistry[activity.predictionConfig!.sceneKey!]?.(100, accentColor)
               : undefined}
           />
         )
@@ -210,7 +210,7 @@ export default function ActivityRenderer({ activity, onCorrect, onIncorrect, acc
           <EngineDragMechanism
             config={activity.dragMechanismConfig}
             color={accentColor}
-            describe={physicsDescribeRegistry[activity.dragMechanismConfig.describeKey] ?? (() => '')}
+            describe={describeRegistry[activity.dragMechanismConfig.describeKey] ?? (() => '')}
             onPositionChange={() => { if (!dragMechanismInteracted) setDragMechanismInteracted(true); }}
           />
         )

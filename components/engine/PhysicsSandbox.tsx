@@ -64,6 +64,7 @@ export default function PhysicsSandbox<TInputs extends Record<string, number>, T
   // quickly without the screen being overwhelming on first look.
   const [visibleCount, setVisibleCount] = useState(() => Math.min(2, config.parameters.length));
   const inputsRef = useRef(inputs);
+  const interactedRef = useRef(false);
   inputsRef.current = inputs;
 
   const minPlaySeconds = config.minPlaySeconds ?? 8;
@@ -82,8 +83,14 @@ export default function PhysicsSandbox<TInputs extends Record<string, number>, T
   useEffect(() => {
     if (submitted) return;
     const id = setInterval(() => {
-      setSimState(prev => model.step(prev, inputsRef.current, TICK_MS / 1000));
-      setPlaySeconds(s => s + TICK_MS / 1000);
+      setSimState(prev => {
+        // A resting model has no visual state to advance. Returning the same
+        // object prevents a tree render every 33ms while the learner reads.
+        if (model.isActive && !model.isActive(prev, inputsRef.current)) return prev;
+        return model.step(prev, inputsRef.current, TICK_MS / 1000);
+      });
+      // Exploration time starts at the first meaningful action, not mount.
+      if (interactedRef.current) setPlaySeconds(s => s + TICK_MS / 1000);
     }, TICK_MS);
     return () => clearInterval(id);
   }, [model, submitted]);
@@ -100,16 +107,21 @@ export default function PhysicsSandbox<TInputs extends Record<string, number>, T
     return () => stopAmbient();
   }, [submitted]);
 
-  const handleParamChange = (id: string, value: number) => {
+  const markInteracted = () => {
+    interactedRef.current = true;
     if (!everInteracted) setEverInteracted(true);
+  };
+
+  const handleParamChange = (id: string, value: number) => {
+    markInteracted();
     setInputs(prev => ({ ...prev, [id]: value }));
   };
 
   const handleTrigger = () => {
     if (!model.trigger) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    playSound('flushWhoosh');
-    if (!everInteracted) setEverInteracted(true);
+    if (config.triggerSound) playSound(config.triggerSound);
+    markInteracted();
     setSimState(prev => model.trigger!(prev));
   };
 
@@ -138,7 +150,7 @@ export default function PhysicsSandbox<TInputs extends Record<string, number>, T
 
       {narrate && <NarrateBox text={narrate(simState, inputs)} accentColor={accentColor} />}
 
-      {model.trigger && (
+      {!submitted && model.trigger && (
         <TriggerButton label={config.triggerLabel ?? 'Trigger'} icon={config.triggerIcon} accentColor={accentColor} onPress={handleTrigger} />
       )}
 
@@ -153,6 +165,7 @@ export default function PhysicsSandbox<TInputs extends Record<string, number>, T
             value={inputs[p.id] as number}
             unit={p.unit}
             onChange={(v) => handleParamChange(p.id, v)}
+            disabled={submitted}
           />
         ))}
       </View>

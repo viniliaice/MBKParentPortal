@@ -2,7 +2,7 @@ import React from 'react';
 import ToiletCutawayDiagram from '@/components/engine/scenes/physics/ToiletCutawayDiagram';
 import ToiletTankDiagram from '@/components/engine/scenes/physics/ToiletTankDiagram';
 import ToiletSandboxScene from '@/components/engine/scenes/physics/ToiletSandboxScene';
-import { toiletPhysicsModel } from '@/components/engine/registry/toiletPhysicsModel';
+import { toiletPhysicsModel } from '@/components/lessonContent/physics/toiletPhysicsModel';
 import type { ToiletSimState } from '@/lib/physics/toiletSimulation';
 import type { PhysicsModel } from '@/lib/physics/PhysicsModel';
 
@@ -65,8 +65,8 @@ export const physicsSandboxNarrateRegistry: Record<string, (state: ToiletSimStat
       return `SIPHON RUNNING — the trapway is completely full, pulling water out at ${Math.round(state.outflowRate)}% flow. Bigger pipes make this happen faster.`;
     }
     if (state.refilling) {
-      if (state.overflowRisk > 0.05) {
-        return `Refilling, but the float cutoff is set so high (${Math.round(inputs.floatCutoff)}%) there's barely any safety margin before overflow — try lowering it.`;
+      if (state.refillFailureRisk > 0.05) {
+        return `The leak is losing water faster than the inlet can replace it. Reduce the leak or increase the supply path and test again.`;
       }
       return `Refilling now. The float rises with the tank and will shut the valve at ${Math.round(inputs.floatCutoff)}%.`;
     }

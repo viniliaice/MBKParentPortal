@@ -41,7 +41,7 @@ export default function CelebrationOverlay({ xpGained, badgeName, badgeIcon, cor
   return (
     <Animated.View style={[styles.overlay, { opacity }]}>
       <Animated.View style={[styles.card, { transform: [{ scale }] }]}>
-        <LinearGradient colors={['#1A2A5C', '#141D3A']} style={StyleSheet.absoluteFill} borderRadius={28} />
+        <LinearGradient colors={['#1A2A5C', '#141D3A']} style={[StyleSheet.absoluteFill, { borderRadius: 28 }]} />
 
         <Text style={styles.emoji}>{badgeIcon}</Text>
         <Text style={styles.title}>Lesson Complete!</Text>

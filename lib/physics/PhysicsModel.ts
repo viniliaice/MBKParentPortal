@@ -9,6 +9,11 @@ export interface PhysicsModel<TInputs, TState> {
   createRestingState: (inputs: TInputs) => TState;
   /** advance the simulation by dtSec given the current state + inputs */
   step: (state: TState, inputs: TInputs, dtSec: number) => TState;
-  /** fired when the sandbox's primary trigger button is pressed (e.g. "flush") */
+  /** fired when the sandbox's primary trigger button is pressed */
   trigger?: (state: TState) => TState;
+  /**
+   * Lets the host stop rendering simulation frames while a model is at rest.
+   * This is optional because some models intentionally evolve continuously.
+   */
+  isActive?: (state: TState, inputs: TInputs) => boolean;
 }
