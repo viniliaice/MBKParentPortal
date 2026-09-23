@@ -164,6 +164,23 @@ describe('.easignore (what EAS Build uploads)', () => {
   });
 });
 
+describe('supabase/config.toml', () => {
+  it('disables JWT verification for the webhook function', () => {
+    // pg_net sends no Authorization header, so the default (verify) rejects the
+    // trigger's call with 401 before the function body runs. Losing this line is
+    // silent: pushes simply stop.
+    const file = path.join(ROOT, 'supabase', 'config.toml');
+    assert.ok(existsSync(file), 'supabase/config.toml must exist');
+    const text = readFileSync(file, 'utf8');
+    assert.match(text, /\[functions\.send-notification\]/, 'the function must have a block');
+    assert.match(
+      text,
+      /\[functions\.send-notification\][\s\S]*?verify_jwt\s*=\s*false/,
+      'and it must set verify_jwt = false, or the trigger gets a 401',
+    );
+  });
+});
+
 describe('google-services.json', () => {
   it('matches the android package in app.json (skipped when absent)', t => {
     const file = path.join(ROOT, 'google-services.json');

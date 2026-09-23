@@ -17,8 +17,8 @@ each one has a check.
 | 2 | **EAS uploads that file** — it is git-ignored, and EAS Build uploads only what is not ignored | **done**: `.easignore` includes it (and `.env`) with `!` entries, asserted by `tests/config/app-config.test.mjs` | EAS build log: no `"google-services.json" is missing` |
 | 3 | **App registers a token and stores it** — permission, channel, `getExpoPushTokenAsync`, `set_push_token()` | **done** (client code + function applied). Android 13+ `POST_NOTIFICATIONS` comes from the `expo-notifications` library manifest and merges into the APK | after one launch: `select expo_push_token from profiles where id = '<parent id>';` → non-null |
 | 4 | **FCM V1 credentials on the EAS project** — Expo's push service needs them to reach Android | **not done** (cannot be done from the repository) | EAS → Project → Credentials → Android → *Push notifications* shows an FCM V1 service account |
-| 5 | **The delivery function deployed** — `send-notification` | **not done** | Supabase → Edge Functions → `send-notification` exists |
-| 6 | **A trigger that calls it on a new message/announcement**, sending the `x-webhook-secret` header | **unknown — check it** (query below) | inserting a message results in a function log line |
+| 5 | **The delivery function deployed** — `send-notification`, with JWT verification **off** | **needs redeploy** with the hardened code and `verify_jwt = false` (§4) | Edge Functions → `send-notification` → *Enforce JWT verification* is off; a test insert logs a line |
+| 6 | **A trigger that calls it on a new message/announcement**, sending the `x-webhook-secret` header | **half done**: `call_push_notification()` exists and posts the record, but **sends no `x-webhook-secret`** — fix it with §3b before enabling the secret | inserting a message produces a function log line |
 | 7 | **Tap routing, icon and colour** | **done** (client code) | a delivered notification shows the "M" icon in brand blue and opens the thread |
 
 ### Check link 6 — does the trigger exist, and does it send the header?
@@ -43,6 +43,138 @@ where p.pronamespace = 'public'::regnamespace
   the function → add the header to the trigger → verify a push → only then set
   `PUSH_WEBHOOK_SECRET`. Until the secret is set, the function logs a warning and
   continues, so nothing breaks in between.
+
+### 3b. The trigger's missing header — paste this
+
+Your `call_push_notification()` posts the record but sends only `Content-Type`.
+The function rejects a call without `x-webhook-secret` once the secret is set, so
+the two must be changed together. **Generate the secret first, on your own machine:**
+
+```bash
+openssl rand -hex 32
+```
+
+Then run this in the SQL Editor (it replaces the function only — the trigger keeps
+pointing at it, and no data is touched):
+
+```sql
+CREATE OR REPLACE FUNCTION public.call_push_notification()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $function$
+DECLARE
+  -- The same value you will set as PUSH_WEBHOOK_SECRET on the edge function.
+  -- It never goes in the repository: this function definition lives in the
+  -- database, and only administrators can read it.
+  v_secret constant text := 'PASTE-YOUR-GENERATED-SECRET-HERE';
+BEGIN
+  PERFORM net.http_post(
+    url := 'https://qopeilyvkfqbjdeudwnz.supabase.co/functions/v1/send-notification',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-webhook-secret', v_secret
+    ),
+    body := jsonb_build_object('record', row_to_json(NEW))
+  );
+  RETURN NEW;
+END;
+$function$;
+```
+
+Two ordering rules, because getting them backwards produces silence rather than an
+error:
+
+1. **Deploy the function first** (§4). Its current deployed version does not check
+   the header, so the trigger above works with either version — but a function that
+   checks the header with a trigger that does not send it returns 401.
+2. **Set `PUSH_WEBHOOK_SECRET` last**, once §4 is deployed and a test insert shows a
+   log line. Until then the function warns and continues, so nothing breaks in
+   between.
+
+(If you would rather the secret not sit in a function definition at all, Supabase
+Vault is the alternative: store it once with `vault.create_secret()`, read it in the
+trigger with `vault.decrypted_secrets`, and keep the same environment variable on the
+function. Say the word and I will write that version.)
+
+### 4. Deploying the function (edge functions → send-notification)
+
+**Either path works; both need the same two settings.**
+
+*Dashboard:* Supabase → **Edge Functions** → `send-notification` → open it → paste
+the contents of `supabase/functions/send-notification/index.ts` → **Deploy**. Then:
+- **Settings → turn "Enforce JWT verification" OFF.** Without this the trigger's
+  call is rejected with 401 before the function runs, because pg_net sends no
+  Authorization header. The request is authenticated by the webhook secret instead.
+- **Secrets → add `PUSH_WEBHOOK_SECRET`** with the value you generated in §3b.
+  (`SUPABASE_SERVICE_ROLE_KEY` is provided by Supabase automatically.)
+
+*CLI:*
+
+```bash
+supabase login
+supabase link --project-ref qopeilyvkfqbjdeudwnz
+supabase functions deploy send-notification      # config.toml already sets verify_jwt = false
+supabase secrets set PUSH_WEBHOOK_SECRET=<the value from §3b>
+```
+
+`supabase/config.toml` in this repository carries that setting, so a CLI deploy does
+the right thing without extra flags. Only the function is deployed — **do not run
+`supabase db push`** (see `docs/schema.md`).
+
+*Check it:* insert a message from a parent to their child's teacher, then look at
+Edge Functions → `send-notification` → **Logs**. You should see the summary line for
+the call, and either a delivery result or `No push token` for a parent who has not
+installed the app.
+
+### 4b. FCM V1 credentials on the EAS project
+
+This is what lets Expo's push service hand a notification to Google for delivery to
+the device. Two different files are involved, and only one goes in the repository:
+
+> This is the one people forget. Without it, `getExpoPushTokenAsync()` still returns a
+> token and `set_push_token()` still stores it — and the push never arrives.
+
+| File | Where it lives | In the repo? |
+| --- | --- | --- |
+| `google-services.json` | inside the app build (it identifies the Firebase app to the device) | **gitignored**, included in the EAS upload via `.easignore` |
+| FCM **V1 service-account key** | EAS servers, used to *send* | **never** — it is a credential |
+
+**Get the key (Firebase console):**
+
+1. <https://console.firebase.google.com> → project **mbk-parent-portal** → ⚙️
+   **Project settings** → **Service accounts** tab.
+2. **Generate new private key** → confirm → a `.json` file downloads. This is the
+   FCM V1 key. Treat it like a password: do not email it, do not commit it, and do
+   not paste it into chat.
+3. If pushes later fail with a 403 from Google, enable the **Firebase Cloud
+   Messaging API** for the project in Google Cloud Console (APIs & Services →
+   Library) and try again.
+
+**Upload it to EAS** — dashboard (easiest):
+
+1. <https://expo.dev> → your project → **Credentials** → **Android**.
+2. **Push notifications (FCM V1)** → **Upload** → choose the JSON from step 2.
+
+or CLI:
+
+```bash
+eas credentials            # Android → Push notifications (FCM V1) → upload the JSON
+```
+
+**Test delivery without the database trigger** (isolates links 3 and 4 from 5 and 6):
+copy a parent's stored token —
+
+```sql
+select id, expo_push_token from profiles where expo_push_token is not null;
+```
+
+— paste it into <https://expo.dev/notifications> and send a test message. If it
+arrives, the app side and the FCM key are correct, and anything still failing is in
+the trigger or the function. If nothing arrives, the key is the first suspect.
+Notifications reach **physical devices only** (not emulators without Play services),
+and the app asks for permission on first launch — accept it.
 
 ### Exact order to finish this
 

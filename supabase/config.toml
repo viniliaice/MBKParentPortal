@@ -1,0 +1,17 @@
+# Supabase project configuration (used by the Supabase CLI).
+#
+# The only setting here that changes behaviour is the last one, and it matters:
+# `send-notification` is called by a database trigger through pg_net, which sends
+# no Authorization header. Edge Functions verify a JWT by default, so with the
+# default setting the trigger's call is rejected with 401 before the function body
+# ever runs. Verification is therefore disabled for this one function, and the
+# request is authenticated by the `x-webhook-secret` header instead — the check
+# inside the function (see supabase/functions/send-notification/index.ts).
+#
+# If you deploy from the dashboard rather than the CLI, set the same thing there:
+# Edge Functions → send-notification → turn OFF "Enforce JWT verification".
+
+project_id = "qopeilyvkfqbjdeudwnz"
+
+[functions.send-notification]
+verify_jwt = false
