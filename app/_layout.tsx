@@ -1,7 +1,11 @@
 import React, { useEffect } from 'react';
 import { Platform } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { registerForPushNotifications } from '@/lib/notifications';
+import {
+  configureNotificationHandling,
+  registerForPushNotifications,
+  routeForNotification,
+} from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -24,7 +28,7 @@ SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
 
-const VALID_SEGMENTS = new Set(['(tabs)', 'login', 'homework', 'attendance', 'results', 'lesson', 'quizzes']);
+const VALID_SEGMENTS = new Set(['(tabs)', 'login', 'homework', 'attendance', 'results', 'lesson', 'quizzes', 'legal', 'account']);
 
 function AuthGate() {
   const { user, loading } = useAuth();
@@ -32,11 +36,12 @@ function AuthGate() {
   const segments = useSegments();
 
   useEffect(() => {
-    if (loading || segments.length === 0) return;
-    const inTabs = segments[0] === '(tabs)';
+    const first = segments[0] as string | undefined;
+    if (loading || !first) return;
+    const inTabs = first === '(tabs)';
     if (!user && inTabs) {
       router.replace('/login');
-    } else if (user && !inTabs && !VALID_SEGMENTS.has(segments[0])) {
+    } else if (user && !inTabs && !VALID_SEGMENTS.has(first)) {
       router.replace('/(tabs)');
     }
   }, [user, loading, segments]);
@@ -46,21 +51,51 @@ function AuthGate() {
 
 function RootLayoutNav() {
   const { user } = useAuth();
+  const router = useRouter();
+
+  // Foreground presentation + Android channel. Runs once.
   useEffect(() => {
+    configureNotificationHandling();
+  }, []);
+
+  // Register the device token for the signed-in account. The token is stored
+  // server-side through the set_push_token() RPC (the profiles table is not
+  // writable by clients) and is never printed to the console.
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    let cancelled = false;
+
     (async () => {
-      if (Platform.OS === 'web') return;
       const token = await registerForPushNotifications();
-      console.log('📱 PUSH TOKEN:', token);
-      if (token && user) {
-        await supabase.from('profiles').update({ expo_push_token: token }).eq('id', user.id);
-        console.log('✅ Push token saved to Supabase for user:', user.id);
-      } else if (!token) {
-        console.log('❌ No push token — Firebase may not be configured');
-      } else if (!user) {
-        console.log('⚠️ Got token but no user logged in — token not saved');
+      if (!token || cancelled) return;
+      await supabase.rpc('set_push_token', { p_token: token });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  // Tapping a notification opens the screen it belongs to.
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    let subscription: { remove: () => void } | undefined;
+
+    (async () => {
+      try {
+        const Notifications = await import('expo-notifications');
+        subscription = Notifications.addNotificationResponseReceivedListener(response => {
+          const target = routeForNotification(response.notification.request.content.data);
+          if (target) router.push(target as never);
+        });
+      } catch {
+        // expo-notifications unavailable (web / Expo Go): nothing to route.
       }
     })();
-  }, [user]);
+
+    return () => subscription?.remove();
+  }, [router]);
+
   return (
     <>
       <AuthGate />
@@ -72,6 +107,8 @@ function RootLayoutNav() {
         <Stack.Screen name="results" options={{ presentation: 'card' }} />
         <Stack.Screen name="lesson/[id]" options={{ presentation: 'card' }} />
         <Stack.Screen name="quizzes" />
+        <Stack.Screen name="legal" options={{ presentation: 'card' }} />
+        <Stack.Screen name="account" options={{ presentation: 'card' }} />
       </Stack>
     </>
   );

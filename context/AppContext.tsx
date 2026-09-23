@@ -1,6 +1,16 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase, type SupabaseStudent, type SupabaseExam, type SupabaseAnnouncement, type SupabaseMessage, type SupabaseLessonProgress, type SupabaseLessonAttempt, type SupabaseGamification } from '@/lib/supabase';
+import {
+  supabase,
+  type SupabaseStudent,
+  type SupabaseExam,
+  type SupabaseAnnouncement,
+  type SupabaseMessage,
+  type SupabaseContact,
+  type SupabaseLessonProgress,
+  type SupabaseLessonAttempt,
+  type SupabaseGamification,
+} from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import type { HomeworkItem, AttendanceRecord, AppMessage } from '@/data/mockData';
 import { computeMasteryLevel, nextSrsDueDate } from '@/lib/mastery';
@@ -14,6 +24,26 @@ const DEFAULT_GAMIFICATION: GamificationState = {
   currentStreak: 0, longestStreak: 0, lastLessonDate: null,
   level: 1, totalXPEarned: 0, dailyRewardClaimed: false, dailyRewardDate: null,
 };
+
+/**
+ * The RPC raises stable codes so the UI can explain the failure without
+ * leaking database details.
+ */
+function describeSendError(message: string): string {
+  if (message.includes('recipient_not_authorized')) {
+    return 'This person is not an authorized contact for your account.';
+  }
+  if (message.includes('empty_message')) {
+    return 'Please enter a subject and a message.';
+  }
+  if (message.includes('no_profile')) {
+    return 'Your session has expired. Please sign in again.';
+  }
+  if (message.includes('not_authenticated')) {
+    return 'Please sign in again to send messages.';
+  }
+  return 'Could not send the message. Please try again.';
+}
 
 function localDateStr(d = new Date()): string {
   const y = d.getFullYear();
@@ -71,6 +101,18 @@ export function computeMastery(lessonProgress: Record<string, LessonProgress>, s
   return mastery;
 }
 
+export interface SendMessageInput {
+  recipientId: string;
+  subject: string;
+  body: string;
+}
+
+export interface SendMessageResult {
+  ok: boolean;
+  /** Already user-facing text; the RPC's error codes map to these. */
+  error?: string;
+}
+
 export interface ExamComponent {
   name: string;
   score: number;
@@ -100,7 +142,15 @@ interface AppContextType {
   messages: AppMessage[];
   unreadCount: number;
   markRead: (id: string) => void;
-  sendMessage: (msg: Omit<AppMessage, 'id' | 'createdAt' | 'isRead'>) => void;
+  /**
+   * Sends a message through the send_message() RPC: sender, sender name and
+   * role are taken from the session server-side, and the recipient is validated
+   * against the school relationship. The client never supplies identities.
+   */
+  sendMessage: (input: SendMessageInput) => Promise<SendMessageResult>;
+  /** People the signed-in user is authorized to message (from list_contacts()). */
+  contacts: SupabaseContact[];
+  loadContacts: () => Promise<SupabaseContact[]>;
   lessonProgress: Record<string, LessonProgress>;
   lessonAttempts: Record<string, AttemptSummary[]>;
   saveLessonProgress: (p: LessonProgress) => void;
@@ -262,6 +312,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [lessonAttempts, setLessonAttempts] = useState<Record<string, AttemptSummary[]>>({});
   const [gamification, setGamification] = useState<GamificationState>(DEFAULT_GAMIFICATION);
   const [gamRespExists, setGamRespExists] = useState(false);
+  const [contacts, setContacts] = useState<SupabaseContact[]>([]);
 
   const attendanceMap = useMemo(() => {
     const map = new Map<string, Map<string, { present: number; total: number }>>();
@@ -390,20 +441,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const allMessages: AppMessage[] = [];
         if (inboxResult.data) {
           allMessages.push(...(inboxResult.data as SupabaseMessage[]).map(m => ({
-            id: m.id, senderId: m.senderId, senderName: m.senderId,
-            recipientId: m.recipientId, recipientName: 'You',
-            subject: m.subject, body: m.body,
-            isRead: m.readAt !== null, createdAt: m.createdAt, isInbox: true,
+            id: m.id,
+            senderId: m.senderId,
+            senderName: m.senderName ?? 'School',
+            recipientId: m.recipientId,
+            recipientName: m.recipientName ?? 'You',
+            subject: m.subject,
+            body: m.body,
+            isRead: m.readAt !== null,
+            createdAt: m.createdAt,
+            isInbox: true,
           })));
         }
         if (sentResult.data) {
           allMessages.push(...(sentResult.data as SupabaseMessage[]).map(m => ({
-            id: m.id, senderId: m.senderId, senderName: 'You',
-            recipientId: m.recipientId, recipientName: m.recipientId,
-            subject: m.subject, body: m.body,
-            isRead: true, createdAt: m.createdAt, isInbox: false,
+            id: m.id,
+            senderId: m.senderId,
+            senderName: m.senderName ?? 'You',
+            recipientId: m.recipientId,
+            recipientName: m.recipientName ?? 'Recipient',
+            subject: m.subject,
+            body: m.body,
+            isRead: true,
+            createdAt: m.createdAt,
+            isInbox: false,
           })));
         }
+        allMessages.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         setMessages(allMessages);
 
         if (annResult.data) {
@@ -421,28 +485,45 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const markRead = async (id: string) => {
     setMessages(prev => prev.map(m => m.id === id ? { ...m, isRead: true } : m));
-    await supabase.from('messages').update({ readAt: new Date().toISOString() }).eq('id', id);
+    // Only the recipient may mark a message read; the RPC enforces that.
+    await supabase.rpc('mark_message_read', { p_message: id });
   };
 
-  const sendMessage = async (msg: Omit<AppMessage, 'id' | 'createdAt' | 'isRead'>) => {
-    const newId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
-    const newMsg: AppMessage = {
-      ...msg,
-      id: newId,
-      createdAt: new Date().toISOString(),
-      isRead: true,
-    };
-    setMessages(prev => [newMsg, ...prev]);
+  const loadContacts = async (): Promise<SupabaseContact[]> => {
+    const { data, error } = await supabase.rpc('list_contacts');
+    if (error || !data) return [];
+    const list = data as SupabaseContact[];
+    setContacts(list);
+    return list;
+  };
 
-    await supabase.from('messages').insert({
-      id: newId,
-      senderId: msg.senderId,
-      recipientId: msg.recipientId,
-      subject: msg.subject,
-      body: msg.body,
-      readAt: null,
-      createdAt: new Date().toISOString(),
+  const sendMessage = async ({ recipientId, subject, body }: SendMessageInput): Promise<SendMessageResult> => {
+    const { data, error } = await supabase.rpc('send_message', {
+      p_recipient: recipientId,
+      p_subject: subject,
+      p_body: body,
     });
+
+    if (error) {
+      return { ok: false, error: describeSendError(error.message) };
+    }
+
+    const now = new Date().toISOString();
+    const recipient = contacts.find(c => c.id === recipientId);
+    const sent: AppMessage = {
+      id: String(data),
+      senderId: user?.id ?? '',
+      senderName: 'You',
+      recipientId,
+      recipientName: recipient?.name ?? 'Recipient',
+      subject,
+      body,
+      isRead: true,
+      createdAt: now,
+      isInbox: false,
+    };
+    setMessages(prev => [sent, ...prev]);
+    return { ok: true };
   };
 
   const saveLessonProgress = (p: LessonProgress) => {
@@ -605,7 +686,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return (
     <AppContext.Provider value={{
       loading, students, homework, attendance: rawAttendance, results, announcements,
-      messages, unreadCount, markRead, sendMessage,
+      messages, unreadCount, markRead, sendMessage, contacts, loadContacts,
       lessonProgress, lessonAttempts, saveLessonProgress, saveLessonAttempt, updateSrsState, getTotalXP, gamification,
     }}>
       {children}

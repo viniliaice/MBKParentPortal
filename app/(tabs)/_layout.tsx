@@ -55,7 +55,7 @@ function TabLayout() {
           title: 'Learn',
           tabBarIcon: ({ color, size }) =>
             isIOS ? (
-              <SymbolView name="book.open" tintColor={color} size={size} />
+              <SymbolView name="book" tintColor={color} size={size} />
             ) : (
               <Ionicons name="school-outline" size={size} color={color} />
             ),

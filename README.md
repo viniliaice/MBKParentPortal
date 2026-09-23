@@ -1,109 +1,111 @@
-# Crypto Arbitrage Monitoring Dashboard
+# MBK Parent Portal
 
-A high-performance real-time cryptocurrency arbitrage monitoring dashboard. It continuously tracks 5 major currency pairs across 7 leading cryptocurrency exchanges and evaluates fee-adjusted spread margins in real time, featuring interactive visualizations, customizable fee structures, and alert trigger mechanics.
+A React Native (Expo) app for the **parents and guardians** of MBK school pupils:
+marks, attendance, homework, report comments, announcements, class quizzes and
+messaging with the school.
 
-## 🚀 Quick Start Setup
+**This app is for parent accounts only.** The database also holds teacher,
+supervisor, office and administrator accounts, but those belong to the school's
+own systems; the app refuses to complete a sign-in for any role other than
+`parent`.
 
-To download dependencies and boot both the backend polling service and the Next.js frontend concurrently, run:
+## Requirements
+
+- Node 20+ and npm
+- An Expo account with access to the EAS project (`extra.eas.projectId` in
+  `app.json`)
+- The school's Supabase project credentials (see below)
+
+## Setup
 
 ```bash
-# Install all dependencies (automatically triggers postinstall for dashboard)
 npm install
-
-# Run the real-time development environment (Frontend on Port 3000, Backend on Port 4000)
-npm run dev
+cp .env.example .env      # if present; otherwise create .env (see the next section)
+npm start                 # Expo dev server
+npm run android           # build and run on an Android device or emulator
 ```
 
-The app will immediately boot, and you can open **`http://localhost:3000`** in your browser to inspect the live dashboard!
+### Environment variables
 
----
-
-## 📂 Repository Structure
-
-The arbitrage dashboard is located inside the `crypto-arbitrage` folder, preserving the existing mobile project:
+The app reads two values, both from the school's Supabase project (Settings → API):
 
 ```
-MBKParentPortal/
-├── crypto-arbitrage/              # Primary Dashboard Directory
-│   ├── src/
-│   │   ├── config/
-│   │   │   └── arbitrageConfig.ts # Simple Centralized Configuration File
-│   │   ├── backend/
-│   │   │   └── server.ts          # Express + WebSocket + Polling Service
-│   │   └── app/
-│   │       ├── layout.tsx         # Next.js Root Layout
-│   │       └── page.tsx           # React Interactive Frontend Dashboard
-│   ├── package.json               # Dashboard scripts & dependencies
-│   └── tsconfig.json              # TypeScript compilation setup
-├── package.json                   # Root package manager mapping dev scripts
+EXPO_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=<anon/publishable key>
 ```
 
----
+`.env` is **git-ignored and must stay that way.** Never commit `.env`,
+`google-services.json` or a Firebase admin key; see `docs/security-model.md` §7.
 
-## ⚙️ Centralized Configuration (`arbitrageConfig.ts`)
+`google-services.json` must exist on disk for Android builds (`app.json` points at
+it) but is not part of the repository.
 
-You can add or remove tracked currency pairs or exchange configurations dynamically without touching any of the polling or rendering core logic!
+## Scripts
 
-Located at: `crypto-arbitrage/src/config/arbitrageConfig.ts`
+| Command | What it does |
+| --- | --- |
+| `npm start` | Expo dev server |
+| `npm run android` / `npm run ios` | Build and run on a device/emulator |
+| `npm run web` | Web build (the app also runs in the browser) |
+| `npm run typecheck` | `tsc --noEmit` — the standing code check |
+| `npm test` | Database tests against a disposable in-process Postgres (PGlite) |
+| `npm run doctor` | `expo-doctor` |
 
-```typescript
-export const arbitrageConfig: ArbitrageConfig = {
-  // Add or remove pairs easily (standard COIN/USDT format)
-  pairs: ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'DOGE/USDT'],
-  
-  // Configure platforms, enabling status, and default starting fees
-  exchanges: [
-    { id: 'binance', name: 'Binance', defaultFee: 0.0010, enabled: true },
-    { id: 'coinbase', name: 'Coinbase Exchange', defaultFee: 0.0040, enabled: true },
-    { id: 'okx', name: 'OKX', defaultFee: 0.0010, enabled: true },
-    { id: 'bybit', name: 'Bybit', defaultFee: 0.0010, enabled: true },
-    { id: 'kucoin', name: 'KuCoin', defaultFee: 0.0010, enabled: true },
-    { id: 'bitget', name: 'Bitget', defaultFee: 0.0010, enabled: true },
-    { id: 'upbit', name: 'Upbit', defaultFee: 0.0005, enabled: true },
-  ],
-  pollingIntervalMs: 2500, // Query public endpoints every 2.5 seconds
-  defaultAlertThresholdPercent: 1.0, // Default threshold for alerts
-};
+There is no linter configured in this project; `npm run typecheck` plus the tests
+are the checks that exist.
+
+## Layout
+
+```
+app/                 screens (expo-router); (tabs)/ is the signed-in shell
+components/          shared UI
+context/             AuthContext (Supabase Auth) and AppContext (data)
+lib/                 supabase client and types, notifications, account deletion
+constants/           theme, legal configuration (policy URLs)
+assets/              icons, splash, notification icon
+supabase/            migrations/ (versioned), functions/ (edge functions)
+tests/db/            PGlite harness, production-shaped fixture, suites
+docs/                schema, security model, privacy policy, deletion, notifications
+okf/                 school knowledge documents used by the assistant features
 ```
 
----
+## Database
 
-## 💸 Where to Plug in Real Fee Structures
+The live database is the source of truth; `supabase/migrations/` is ordered and
+`supabase/migration_quiz.sql` is superseded and must not be run (it is not a
+migration and cannot execute).
 
-Currently, trading fee calculations use standard starting percentages (e.g. `0.10%` for Binance, `0.40%` for Coinbase). 
-In real trading environments, fee tiers depend on your VIP level, monthly trade volumes, or whether you pay in native platform tokens (like BNB or KCS).
+**Nothing in `supabase/migrations/2026092309*` has been applied to the project.**
+Those files were written against an earlier, different schema and carry a
+not-verified banner; `docs/schema.md` explains exactly where they diverge and what
+the live project actually looks like.
 
-Here is how you can customize this:
+Rules the school has confirmed, and everything added since, are additive:
+`docs/schema.md` §6 lists them, including the two open policies that were closed.
 
-1. **Static Pre-Sets (Simplest):** Update `defaultFee` within `crypto-arbitrage/src/config/arbitrageConfig.ts`.
-2. **Interactive UI Adjustments (Fully Supported!):** Go to the **"Adjust Fees"** tab inside the web UI. You can type in any custom fee percentage (e.g. `0.075%`), click "Apply Fee", and the backend server will immediately update its fee multipliers, recalculate net margins, and broadcast updates to all connected browser tabs.
-3. **Dynamic API Tiers (Production integration):**
-   In the backend polling loop inside `crypto-arbitrage/src/backend/server.ts`, you can query private authenticated API endpoints of each exchange to retrieve your exact personal fee rates:
-   - *Binance:* `GET /api/v3/tradeFee` (requires API keys and signatures).
-   - *KuCoin:* `GET /api/v1/trade-fees`.
-   - Then override `state.exchangesStatus[exchangeId].fee` with the retrieved value on startup.
+## Tests
 
----
+```bash
+npm test
+```
 
-## ⚡ Real-Time Arbitrage Calculation & Ranking Logic
+Runs `tests/db/baseline.test.mjs` against a throw-away PGlite database loaded from
+`tests/db/fixtures/production-baseline.sql` — the real schema shape. The suites
+that assert access rules are currently named `*.pending.mjs`: they were written
+for the old schema and are not counted until rewritten on the production
+baseline. `tests/db/README.md` explains why. **No test touches the live project.**
 
-### 1. The Spread Profit Formula
-To compute the true fee-adjusted net spread, we simulate a standard transaction:
-- **Buy** on Exchange A at its ask price ($P_{ask, A}$) and pay A's standard buy trade fee rate ($C_{buy}$).
-- **Sell** on Exchange B at its bid price ($P_{bid, B}$) and pay B's standard sell trade fee rate ($C_{sell}$).
+## Security
 
-The mathematical formula used is:
-$$\text{Net Profit \%} = \left( \frac{P_{bid, B} \times (1 - C_{sell})}{P_{ask, A} \times (1 + C_{buy})} - 1 \right) \times 100$$
+Read `docs/security-model.md` first. In short: sign-in is Supabase Auth; access is
+scoped per family in the database; the app never sends a sender identity, a role or
+a parent id from the client; secrets are never committed.
 
-### 2. Sorting & Ranking
-The opportunities are compiled for all 5 pairs, identifying the single most profitable Exchange Buy $\rightarrow$ Exchange Sell pair for each. The resulting list is sorted **by Net Profit % descending**, meaning the overall most profitable coin to trade is always forced to the top of the grid.
+## Related documents
 
----
-
-## 🛡️ Robust Failures & Offline Fallback (High-Fidelity Mock Mode)
-
-1. **Stale Exchange Isolation:** If a public exchange API times out, fails, or throws a rate limit error, the backend service logs the incident and marks that exchange as `online: false`. The rest of the dashboard **continues to run perfectly**, displaying the other 6 exchanges' pricing while notifying the user that the stale platform's data is offline.
-2. **Egress Firewall & Geo-Blocking Bypass:** Some major exchanges (like Binance and OKX) block US IP addresses, and many sandboxed testing environments disable outbound HTTPS requests.
-   - **How we handle this:** If the polling service detects that outgoing requests are failing, it **automatically falls back to a high-fidelity mock data generator**.
-   - This generator simulates real, active, floating prices for all 5 coins, applying realistic price premiums (like Upbit's Kimchi Premium) and fluctuating spreads to test the dashboard, sorting, alerts, and custom fee adjustment interfaces flawlessly.
-   - You can also manually toggle this mock mode on and off using the **"Mode"** button in the header!
+- `docs/schema.md` — the live schema, the policy audit, deployment safety rules
+- `docs/security-model.md` — identity, access, device/session policy, limitations
+- `docs/privacy-policy.md` — data inventory (draft, needs hosting + legal review)
+- `docs/account-deletion.md` — what deletion removes and what the school keeps
+- `docs/notifications.md` — channels, tap routing, tokens, FCM credential step
+- `AGENTS.md` — working rules for automated changes in this repository

@@ -1,3 +1,16 @@
+-- ============================================================================
+-- SUPERSEDED — DO NOT RUN.
+--
+-- This file is not a migration: it lives outside supabase/migrations/, so
+-- `supabase db push` never applied it, and it cannot run as written (it uses
+-- `CREATE POLICY IF NOT EXISTS`, which is not valid PostgreSQL, so the whole
+-- file aborts). The quiz tables it describes also do not match the live project:
+-- production uses text primary keys, `"questionOrder" IN ('created','randomized')`
+-- and a `quiz_attempts` table with no `"parentId"` column.
+--
+-- Kept only as a record of the original quiz design. The authoritative model is
+-- the live schema; see docs/schema.md.
+-- ============================================================================
 -- Quiz System Tables
 -- Each table uses IF NOT EXISTS so this migration is safe to re-run.
 
