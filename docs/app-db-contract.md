@@ -9,7 +9,9 @@ Last updated: 2026-09-23.
 
 ## The functions the app calls
 
-Delivered by `20260923106000_parent_app_functions.sql` (not yet applied).
+Delivered by `20260923106000_parent_app_functions.sql` (**applied**), with
+`can_message()` corrected by `20260923107000_message_recipients.sql` (**applied**).
+Verification: `docs/post-apply-checks.md`.
 
 | Function | Called from | Contract | Live before |
 | --- | --- | --- | --- |

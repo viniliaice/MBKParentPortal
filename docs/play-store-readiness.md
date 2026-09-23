@@ -39,6 +39,11 @@ Last updated: 2026-09-23.
 - [ ] Run the first build on the `preview` profile, then `production`
       (`eas build --profile production --platform android`). **No build was
       submitted or published by this work.**
+- [ ] Before the first build: `google-services.json` must be regenerated for
+      `com.MBKConnect` (Firebase → add an Android app with the new package), or the
+      build fails. `npm test` fails on exactly this until it is done.
+- [ ] After installing the internal build, walk the app checklist in
+      `docs/post-apply-checks.md` §6.
 
 ### Play Console listing
 - [x] **Privacy policy URL** — published by the school at

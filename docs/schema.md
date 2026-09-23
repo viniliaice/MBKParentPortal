@@ -171,7 +171,13 @@ against production — each is a reason for the staging run, not a thing to fix 
 | --- | --- | --- |
 | `20260923101000_parent_app_access.sql` | **applied** | added parent read for `students`, participant read for `messages`, class read for `announcements` / `announcement_recipients`, parent read for `quiz_questions`, read for `academic_years`. Added only. |
 | `20260923102000_tighten_open_policies.sql` | **applied** | dropped `profiles."Allow authenticated users"` and `students."Enable read access for all users"`, and added `profiles_parent_read_own`. |
-| `20260923103000_staff_and_contact_profile_read.sql` | see §6.3 | restores the reads those two drops also removed. |
+| `20260923103000_staff_and_contact_profile_read.sql` | **applied** | restores, read-only and relationship-scoped, the reads those two drops also removed. |
+| `20260923104000_enable_rls_close_public_tables.sql` | **applied** | RLS on for the fifteen tables that never had it, with each table's rules. |
+| `20260923105000_fix_profiles_policy_recursion.sql` | **applied** | fixes the sign-in recursion (see §6.4). |
+| `20260923106000_parent_app_functions.sql` | **applied** | the seven functions the app calls, for the live schema. |
+| `20260923107000_message_recipients.sql` | **applied** | restores the office's ability to send, and lets a parent reach the office. |
+
+Verification for all of the above: `docs/post-apply-checks.md`.
 
 ### 6.1 Identity model (confirmed by the school) — and the rules that ignored it
 
@@ -297,6 +303,26 @@ only working because RLS was off still work.
 row is. Turning RLS on without knowing that mapping would break whatever reads it;
 leaving it off keeps per-student progress public. Two answers are needed: which
 device reads it, and what `student_id` points at.
+
+### 6.4 The recursion, and the rule it established
+
+Sign-in failed with *"infinite recursion detected in policy for relation
+profiles"* after the first three files were applied. Cause: rules placed on
+`profiles` called `current_profile_role()` (which reads `profiles`) and joined
+`students`/`class_subjects` (whose rules call the helper, which reads `profiles`).
+Nothing recursed before, because no policy on `profiles` read anything — the
+`profiles` table was the one table where the helpers were safe.
+
+`20260923105000` replaces those rules with a single policy delegating to
+`can_read_profile(id)`, a `SECURITY DEFINER` function whose nested reads run as the
+owner, so the loop cannot form. The access is unchanged (own row; admin, supervisor
+and office read the directory; teacher reads their families; parent reads their
+children's teachers).
+
+**Rule going forward:** a policy on `profiles` must not query a table — put the
+relationship in a `SECURITY DEFINER` function and call it. `tests/db/recursion.test.mjs`
+asserts that shape statically, because *executing* the failure PANICs the test
+database and takes other suites with it.
 
 ### 6.3 The fix, staged
 
