@@ -164,6 +164,35 @@ describe('.easignore (what EAS Build uploads)', () => {
   });
 });
 
+describe('push token logging stays in development', () => {
+  // A push token identifies a physical device; logging one in a release build was
+  // an audit finding. The app's only token output goes through `devLog`, which is
+  // guarded by __DEV__ — this asserts that guard is still the only route.
+  const source = readFileSync(path.join(ROOT, 'lib', 'notifications.ts'), 'utf8');
+  const lines = source.split('\n');
+
+  it('routes every console call through the __DEV__ guard', () => {
+    const consoleLines = lines
+      .map((line, index) => ({ line, index }))
+      .filter(({ line }) => /console\.(log|info|warn|debug)\(/.test(line));
+
+    assert.ok(consoleLines.length > 0, 'the diagnostic output exists');
+    for (const { line, index } of consoleLines) {
+      const context = lines.slice(Math.max(0, index - 3), index + 1).join('\n');
+      assert.match(
+        context,
+        /if \(__DEV__\)/,
+        `console call outside a __DEV__ guard (line ${index + 1}): ${line.trim()}`,
+      );
+    }
+  });
+
+  it('exposes the diagnostic without logging it itself', () => {
+    assert.match(source, /export async function logPushDiagnostics/, 'the helper exists');
+    assert.match(source, /return report/, 'and returns the report instead of only printing it');
+  });
+});
+
 describe('supabase/config.toml', () => {
   it('disables JWT verification for the webhook function', () => {
     // pg_net sends no Authorization header, so the default (verify) rejects the

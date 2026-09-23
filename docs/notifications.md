@@ -21,6 +21,48 @@ each one has a check.
 | 6 | **A trigger that calls it on a new message/announcement**, sending the `x-webhook-secret` header | **half done**: `call_push_notification()` exists and posts the record, but **sends no `x-webhook-secret`** — fix it with §3b before enabling the secret | inserting a message produces a function log line |
 | 7 | **Tap routing, icon and colour** | **done** (client code) | a delivered notification shows the "M" icon in brand blue and opens the thread |
 
+### Debugging: the app prints why push failed (development builds only)
+
+`logPushDiagnostics()` in `lib/notifications.ts` runs once per sign-in in a
+development build and writes a report to the **Metro terminal** (or `adb logcat`,
+as `[push] diagnostics`). Release builds print nothing — a token identifies a
+device, and printing one was an audit finding, so the guard is `__DEV__` and a test
+asserts that every console call in that module sits behind it.
+
+A working device prints something like:
+
+```
+[push] diagnostics
+platform: android
+expo-notifications: loaded
+expo-device: loaded
+physical device: true
+execution environment: bare
+EAS projectId: 57115254-d9e6-4f9a-a070-7c0283415241
+permission: granted
+token: ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]
+-> paste that token at https://expo.dev/notifications to test delivery
+```
+
+Read it top-down, because each line rules out a cause:
+
+| Line | What it tells you |
+| --- | --- |
+| `expo-notifications: NOT AVAILABLE` | the module is missing from the build |
+| `physical device: false` | emulator/simulator — remote push cannot arrive |
+| `execution environment: storeClient` | you are in **Expo Go**, which cannot receive Android remote push: build a development client |
+| `EAS projectId: MISSING` | `expo.extra.eas.projectId` is absent — the token request will fail |
+| `permission: denied` | the prompt was refused; re-enable notifications in the device settings |
+| `token FAILED: …` | the platform's own message, which names the cause — most often `google-services.json` missing/naming another package, or no FCM V1 key on the EAS project |
+
+**Where the EAS project id lives** (you should never need to hardcode it):
+
+- `app.json` → `expo.extra.eas.projectId` — for this project
+  `57115254-d9e6-4f9a-a070-7c0283415241`. The app reads it from there, so the
+  snippet that hardcodes it would only risk drifting out of step.
+- `eas project:info` (in the project directory, logged in)
+- expo.dev → your project → **Project settings** → *Project ID*
+
 ### Check link 6 — does the trigger exist, and does it send the header?
 
 ```sql

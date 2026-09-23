@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   configureNotificationHandling,
+  logPushDiagnostics,
   registerForPushNotifications,
   routeForNotification,
 } from '@/lib/notifications';
@@ -67,6 +68,10 @@ function RootLayoutNav() {
 
     (async () => {
       const token = await registerForPushNotifications();
+      // Development builds print a full report (including the token, so it can be
+      // pasted into expo.dev/notifications); release builds print nothing, because
+      // a token identifies a device. See docs/notifications.md §0.
+      if (__DEV__) await logPushDiagnostics(token);
       if (!token || cancelled) return;
       await supabase.rpc('set_push_token', { p_token: token });
     })();
