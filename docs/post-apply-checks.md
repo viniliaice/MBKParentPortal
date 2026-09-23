@@ -17,7 +17,16 @@ where p.pronamespace = 'public'::regnamespace
 order by 1;
 ```
 
-Expected: eleven functions (the ten app/helper functions plus `can_message`).
+Expected: exactly these ten, and nothing else from that list —
+
+```
+can_message(text)                 list_contacts()
+can_reach_class(text)             send_message(text,text,text)
+can_read_profile(text)            mark_message_read(text)
+link_profile()                    request_account_deletion(text)
+set_push_token(text)              clear_push_token()
+```
+
 `delete_my_account` must **not** appear — deletion is a request the school handles.
 
 ## 2. RLS is on everywhere it matters

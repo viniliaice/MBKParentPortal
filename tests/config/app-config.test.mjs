@@ -136,6 +136,34 @@ describe('legal configuration (constants/legal.ts)', () => {
   });
 });
 
+describe('.easignore (what EAS Build uploads)', () => {
+  // EAS uses .easignore *instead of* .gitignore, so the entries that pull in the
+  // git-ignored build inputs are what keeps the Android build working. Losing them
+  // shows up as a confusing build failure, so they are asserted here.
+  it('exists, and keeps its include entries last', () => {
+    const file = path.join(ROOT, '.easignore');
+    assert.ok(existsSync(file), '.easignore must exist for EAS builds');
+    const lines = readFileSync(file, 'utf8').split('\n').filter(line => line.trim() && !line.trim().startsWith('#'));
+
+    assert.ok(lines.includes('node_modules/'), 'dependencies must not be uploaded');
+
+    for (const needed of ['!google-services.json', '!.env']) {
+      assert.ok(lines.includes(needed), `${needed} must be present, or the build loses it`);
+      const lastOtherRule = lines.map((line, index) => ({ line, index })).filter(l => !l.line.startsWith('!')).pop();
+      assert.ok(
+        lines.indexOf(needed) > lastOtherRule.index,
+        `${needed} must come after the ignore rules, so it wins`,
+      );
+    }
+
+    // Credentials that must never travel: service-account keys and the Play key.
+    for (const never of ['google-play-service-account.json', '*-service-account*.json']) {
+      assert.ok(lines.includes(never), `${never} must stay excluded`);
+    }
+    assert.ok(!lines.includes('!.gitignore'), 'the git history stays out of the upload');
+  });
+});
+
 describe('google-services.json', () => {
   it('matches the android package in app.json (skipped when absent)', t => {
     const file = path.join(ROOT, 'google-services.json');

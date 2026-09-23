@@ -6,6 +6,60 @@ is stored, and the server side that sends the push. This must stay in step with
 `supabase/functions/send-notification/index.ts`.
 Last updated: 2026-09-23.
 
+## 0. Current state — the seven links in the chain
+
+Push needs all seven. A missing link produces silence, not an error, which is why
+each one has a check.
+
+| # | Link | State | Check |
+| --- | --- | --- | --- |
+| 1 | **`google-services.json` with `com.MBKConnect`** present in the build | **needs the new file** — the copy in the project still declares the old package | `npm test` → passes when the file matches `android.package` |
+| 2 | **EAS uploads that file** — it is git-ignored, and EAS Build uploads only what is not ignored | **done**: `.easignore` includes it (and `.env`) with `!` entries, asserted by `tests/config/app-config.test.mjs` | EAS build log: no `"google-services.json" is missing` |
+| 3 | **App registers a token and stores it** — permission, channel, `getExpoPushTokenAsync`, `set_push_token()` | **done** (client code + function applied). Android 13+ `POST_NOTIFICATIONS` comes from the `expo-notifications` library manifest and merges into the APK | after one launch: `select expo_push_token from profiles where id = '<parent id>';` → non-null |
+| 4 | **FCM V1 credentials on the EAS project** — Expo's push service needs them to reach Android | **not done** (cannot be done from the repository) | EAS → Project → Credentials → Android → *Push notifications* shows an FCM V1 service account |
+| 5 | **The delivery function deployed** — `send-notification` | **not done** | Supabase → Edge Functions → `send-notification` exists |
+| 6 | **A trigger that calls it on a new message/announcement**, sending the `x-webhook-secret` header | **unknown — check it** (query below) | inserting a message results in a function log line |
+| 7 | **Tap routing, icon and colour** | **done** (client code) | a delivered notification shows the "M" icon in brand blue and opens the thread |
+
+### Check link 6 — does the trigger exist, and does it send the header?
+
+```sql
+select tgname, pg_get_triggerdef(t.oid) as definition
+from pg_trigger t
+where t.tgrelid in ('public.messages'::regclass, 'public.announcements'::regclass)
+  and not t.tgisinternal;
+
+-- the function the trigger calls
+select p.oid::regprocedure as signature, pg_get_functiondef(p.oid) as definition
+from pg_proc p
+where p.pronamespace = 'public'::regnamespace
+  and (p.proname ilike '%notif%' or p.proname ilike '%push%' or p.proname ilike '%webhook%');
+```
+
+- **No rows** → nothing sends anything yet; a trigger is needed (that is a migration,
+  and it can be written next).
+- **Rows, but no `x-webhook-secret`** → the deployed function (which checks the
+  header) answers **401** and every push fails silently. Order matters here: deploy
+  the function → add the header to the trigger → verify a push → only then set
+  `PUSH_WEBHOOK_SECRET`. Until the secret is set, the function logs a warning and
+  continues, so nothing breaks in between.
+
+### Exact order to finish this
+
+1. Replace `google-services.json` at the project root with the new download (package
+   `com.MBKConnect`). Confirm: `npm test`.
+2. `eas credentials` → Android → the project → **Push notifications** → upload the
+   FCM V1 service-account JSON. Get it from Firebase → Project settings →
+   *Service accounts* → **Generate new private key** (the account needs the
+   *Firebase Cloud Messaging API* admin role). Only `google-services.json` may sit
+   in the repo — this key is a secret and must not be committed.
+3. `supabase functions deploy send-notification`
+4. Run the trigger query above, then add the header to the trigger (or send me the
+   output and I will write the migration).
+5. `eas build --profile preview --platform android`, install on a **physical**
+   device with Play services, sign in, and confirm the token is stored (link 3).
+6. Send a message from a staff account and watch for the notification.
+
 ## 1. Client
 
 - **Channel.** One Android channel, `default`, declared in `app.json` through the
