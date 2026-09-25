@@ -3,9 +3,9 @@ import colors from '@/constants/colors';
 
 export function useColors() {
   const scheme = useColorScheme();
-  const palette =
-    scheme === 'dark' && 'dark' in colors
-      ? (colors as Record<string, typeof colors.light>).dark
-      : colors.light;
+  // `colors` holds the two palettes plus a shared `radius` number, so the
+  // lookup is typed on the palettes rather than on the whole object.
+  const palettes: Record<string, typeof colors.light> = { light: colors.light, dark: colors.dark };
+  const palette = scheme === 'dark' ? palettes.dark : palettes.light;
   return { ...palette, radius: colors.radius };
 }

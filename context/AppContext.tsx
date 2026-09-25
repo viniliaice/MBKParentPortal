@@ -1,8 +1,21 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase, type SupabaseStudent, type SupabaseExam, type SupabaseAnnouncement, type SupabaseMessage, type SupabaseLessonProgress, type SupabaseGamification } from '@/lib/supabase';
+import {
+  supabase,
+  type SupabaseStudent,
+  type SupabaseExam,
+  type SupabaseAnnouncement,
+  type SupabaseMessage,
+  type SupabaseContact,
+  type SupabaseLessonProgress,
+  type SupabaseLessonAttempt,
+  type SupabaseGamification,
+} from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import type { HomeworkItem, AttendanceRecord, AppMessage } from '@/data/mockData';
+import { computeMasteryLevel, nextSrsDueDate } from '@/lib/mastery';
+
+export type AttemptSummary = { accuracyPct: number; completedAt: string | null };
 
 const PROGRESS_KEY = '@mbk_learning_progress';
 const GAMIFICATION_KEY = '@mbk_gamification';
@@ -11,6 +24,26 @@ const DEFAULT_GAMIFICATION: GamificationState = {
   currentStreak: 0, longestStreak: 0, lastLessonDate: null,
   level: 1, totalXPEarned: 0, dailyRewardClaimed: false, dailyRewardDate: null,
 };
+
+/**
+ * The RPC raises stable codes so the UI can explain the failure without
+ * leaking database details.
+ */
+function describeSendError(message: string): string {
+  if (message.includes('recipient_not_authorized')) {
+    return 'This person is not an authorized contact for your account.';
+  }
+  if (message.includes('empty_message')) {
+    return 'Please enter a subject and a message.';
+  }
+  if (message.includes('no_profile')) {
+    return 'Your session has expired. Please sign in again.';
+  }
+  if (message.includes('not_authenticated')) {
+    return 'Please sign in again to send messages.';
+  }
+  return 'Could not send the message. Please try again.';
+}
 
 function localDateStr(d = new Date()): string {
   const y = d.getFullYear();
@@ -44,6 +77,11 @@ interface LessonProgress {
   totalActivities: number;
   completedAt?: string;
   activityResults?: ActivityResult[];
+  masteryLevel?: number;
+  attemptsCount?: number;
+  lastAttemptAt?: string | null;
+  srsDueAt?: string | null;
+  srsCorrectStreak?: number;
 }
 
 export function computeMastery(lessonProgress: Record<string, LessonProgress>, subjectLessonIds?: Set<string>): Record<string, { correct: number; total: number; pct: number }> {
@@ -61,6 +99,18 @@ export function computeMastery(lessonProgress: Record<string, LessonProgress>, s
     mastery[key].pct = Math.round((mastery[key].correct / mastery[key].total) * 100);
   }
   return mastery;
+}
+
+export interface SendMessageInput {
+  recipientId: string;
+  subject: string;
+  body: string;
+}
+
+export interface SendMessageResult {
+  ok: boolean;
+  /** Already user-facing text; the RPC's error codes map to these. */
+  error?: string;
 }
 
 export interface ExamComponent {
@@ -92,9 +142,20 @@ interface AppContextType {
   messages: AppMessage[];
   unreadCount: number;
   markRead: (id: string) => void;
-  sendMessage: (msg: Omit<AppMessage, 'id' | 'createdAt' | 'isRead'>) => void;
+  /**
+   * Sends a message through the send_message() RPC: sender, sender name and
+   * role are taken from the session server-side, and the recipient is validated
+   * against the school relationship. The client never supplies identities.
+   */
+  sendMessage: (input: SendMessageInput) => Promise<SendMessageResult>;
+  /** People the signed-in user is authorized to message (from list_contacts()). */
+  contacts: SupabaseContact[];
+  loadContacts: () => Promise<SupabaseContact[]>;
   lessonProgress: Record<string, LessonProgress>;
+  lessonAttempts: Record<string, AttemptSummary[]>;
   saveLessonProgress: (p: LessonProgress) => void;
+  saveLessonAttempt: (lessonId: string, correctCount: number, totalActivities: number, activityResults: ActivityResult[]) => void;
+  updateSrsState: (lessonId: string, correct: boolean) => void;
   getTotalXP: (studentId?: string) => number;
   gamification: GamificationState;
 }
@@ -248,8 +309,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [homework, setHomework] = useState<HomeworkItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [lessonProgress, setLessonProgress] = useState<Record<string, LessonProgress>>({});
+  const [lessonAttempts, setLessonAttempts] = useState<Record<string, AttemptSummary[]>>({});
   const [gamification, setGamification] = useState<GamificationState>(DEFAULT_GAMIFICATION);
   const [gamRespExists, setGamRespExists] = useState(false);
+  const [contacts, setContacts] = useState<SupabaseContact[]>([]);
 
   const attendanceMap = useMemo(() => {
     const map = new Map<string, Map<string, { present: number; total: number }>>();
@@ -276,10 +339,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!user) { setLoading(false); return; }
 
     (async () => {
-      const [studentResp, progResp, gamResp] = await Promise.all([
+      const [studentResp, progResp, gamResp, attemptsResp] = await Promise.all([
         supabase.from('students').select('*').eq('parentId', user.id),
         supabase.from('lesson_progress').select('*').eq('parent_id', user.id),
         supabase.from('gamification').select('*').eq('parent_id', user.id).maybeSingle(),
+        supabase.from('lesson_attempts').select('*').eq('parent_id', user.id).order('completed_at', { ascending: true }),
       ]);
 
       if (studentResp.error || !studentResp.data) { setLoading(false); return; }
@@ -303,9 +367,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             totalActivities: row.total_activities,
             completedAt: row.completed_at || undefined,
             activityResults: row.activity_results || [],
+            masteryLevel: row.mastery_level ?? 0,
+            attemptsCount: row.attempts_count ?? 0,
+            lastAttemptAt: row.last_attempt_at ?? null,
+            srsDueAt: row.srs_due_at ?? null,
+            srsCorrectStreak: row.srs_correct_streak ?? 0,
           };
         }
         setLessonProgress(progressMap);
+      }
+
+      if (attemptsResp.data) {
+        const attemptsMap: Record<string, AttemptSummary[]> = {};
+        for (const row of attemptsResp.data as SupabaseLessonAttempt[]) {
+          if (!attemptsMap[row.lesson_id]) attemptsMap[row.lesson_id] = [];
+          attemptsMap[row.lesson_id].push({
+            accuracyPct: row.accuracy_pct,
+            completedAt: row.completed_at,
+          });
+        }
+        setLessonAttempts(attemptsMap);
       }
 
       if (gamResp.data) {
@@ -360,20 +441,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const allMessages: AppMessage[] = [];
         if (inboxResult.data) {
           allMessages.push(...(inboxResult.data as SupabaseMessage[]).map(m => ({
-            id: m.id, senderId: m.senderId, senderName: m.senderId,
-            recipientId: m.recipientId, recipientName: 'You',
-            subject: m.subject, body: m.body,
-            isRead: m.readAt !== null, createdAt: m.createdAt, isInbox: true,
+            id: m.id,
+            senderId: m.senderId,
+            senderName: m.senderName ?? 'School',
+            recipientId: m.recipientId,
+            recipientName: m.recipientName ?? 'You',
+            subject: m.subject,
+            body: m.body,
+            isRead: m.readAt !== null,
+            createdAt: m.createdAt,
+            isInbox: true,
           })));
         }
         if (sentResult.data) {
           allMessages.push(...(sentResult.data as SupabaseMessage[]).map(m => ({
-            id: m.id, senderId: m.senderId, senderName: 'You',
-            recipientId: m.recipientId, recipientName: m.recipientId,
-            subject: m.subject, body: m.body,
-            isRead: true, createdAt: m.createdAt, isInbox: false,
+            id: m.id,
+            senderId: m.senderId,
+            senderName: m.senderName ?? 'You',
+            recipientId: m.recipientId,
+            recipientName: m.recipientName ?? 'Recipient',
+            subject: m.subject,
+            body: m.body,
+            isRead: true,
+            createdAt: m.createdAt,
+            isInbox: false,
           })));
         }
+        allMessages.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         setMessages(allMessages);
 
         if (annResult.data) {
@@ -391,28 +485,45 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const markRead = async (id: string) => {
     setMessages(prev => prev.map(m => m.id === id ? { ...m, isRead: true } : m));
-    await supabase.from('messages').update({ readAt: new Date().toISOString() }).eq('id', id);
+    // Only the recipient may mark a message read; the RPC enforces that.
+    await supabase.rpc('mark_message_read', { p_message: id });
   };
 
-  const sendMessage = async (msg: Omit<AppMessage, 'id' | 'createdAt' | 'isRead'>) => {
-    const newId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
-    const newMsg: AppMessage = {
-      ...msg,
-      id: newId,
-      createdAt: new Date().toISOString(),
-      isRead: true,
-    };
-    setMessages(prev => [newMsg, ...prev]);
+  const loadContacts = async (): Promise<SupabaseContact[]> => {
+    const { data, error } = await supabase.rpc('list_contacts');
+    if (error || !data) return [];
+    const list = data as SupabaseContact[];
+    setContacts(list);
+    return list;
+  };
 
-    await supabase.from('messages').insert({
-      id: newId,
-      senderId: msg.senderId,
-      recipientId: msg.recipientId,
-      subject: msg.subject,
-      body: msg.body,
-      readAt: null,
-      createdAt: new Date().toISOString(),
+  const sendMessage = async ({ recipientId, subject, body }: SendMessageInput): Promise<SendMessageResult> => {
+    const { data, error } = await supabase.rpc('send_message', {
+      p_recipient: recipientId,
+      p_subject: subject,
+      p_body: body,
     });
+
+    if (error) {
+      return { ok: false, error: describeSendError(error.message) };
+    }
+
+    const now = new Date().toISOString();
+    const recipient = contacts.find(c => c.id === recipientId);
+    const sent: AppMessage = {
+      id: String(data),
+      senderId: user?.id ?? '',
+      senderName: 'You',
+      recipientId,
+      recipientName: recipient?.name ?? 'Recipient',
+      subject,
+      body,
+      isRead: true,
+      createdAt: now,
+      isInbox: false,
+    };
+    setMessages(prev => [sent, ...prev]);
+    return { ok: true };
   };
 
   const saveLessonProgress = (p: LessonProgress) => {
@@ -420,7 +531,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const wasCompleted = prev?.completed;
     const updated = { ...lessonProgress, [p.lessonId]: p };
     setLessonProgress(updated);
-
     const today = localDateStr();
     const newGam = { ...gamification };
 
@@ -461,6 +571,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         total_activities: p.totalActivities,
         completed_at: p.completedAt || null,
         activity_results: p.activityResults || null,
+        mastery_level: p.masteryLevel ?? 0,
+        attempts_count: p.attemptsCount ?? 0,
+        last_attempt_at: p.lastAttemptAt ?? null,
+        srs_due_at: p.srsDueAt ?? null,
+        srs_correct_streak: p.srsCorrectStreak ?? 0,
       }, { onConflict: 'parent_id,lesson_id' });
 
       if (!gamRespExists) {
@@ -489,6 +604,79 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     })();
   };
 
+  const saveLessonAttempt = (lessonId: string, correctCount: number, totalActivities: number, activityResults: ActivityResult[]) => {
+    const prev = lessonProgress[lessonId];
+    const prevAttempts = lessonAttempts[lessonId] ?? [];
+    const attemptNumber = (prev?.attemptsCount ?? 0) + 1;
+    const accuracyPct = totalActivities > 0 ? Math.round((correctCount / totalActivities) * 100) : 0;
+    const newAttempt: AttemptSummary = { accuracyPct, completedAt: new Date().toISOString() };
+    const allAttempts = [...prevAttempts, newAttempt];
+    const masteryLevel = computeMasteryLevel(allAttempts);
+    const completed = accuracyPct >= 100 || (prev?.completed ?? false);
+
+    setLessonAttempts(prevA => ({ ...prevA, [lessonId]: allAttempts }));
+
+    const updatedProgress: LessonProgress = {
+      ...prev,
+      lessonId,
+      completed,
+      xpEarned: prev?.xpEarned ?? 0,
+      correctCount,
+      totalActivities,
+      completedAt: completed ? new Date().toISOString() : prev?.completedAt,
+      activityResults,
+      masteryLevel,
+      attemptsCount: attemptNumber,
+      lastAttemptAt: newAttempt.completedAt,
+      srsDueAt: prev?.srsDueAt ?? null,
+      srsCorrectStreak: prev?.srsCorrectStreak ?? 0,
+    };
+    setLessonProgress(prevP => ({ ...prevP, [lessonId]: updatedProgress }));
+
+    (async () => {
+      await supabase.from('lesson_attempts').insert({
+        parent_id: user!.id,
+        lesson_id: lessonId,
+        attempt_number: attemptNumber,
+        correct_count: correctCount,
+        total_activities: totalActivities,
+        accuracy_pct: accuracyPct,
+        activity_results: activityResults,
+        completed_at: newAttempt.completedAt,
+      });
+      await supabase.from('lesson_progress').upsert({
+        parent_id: user!.id,
+        lesson_id: lessonId,
+        completed,
+        xp_earned: updatedProgress.xpEarned,
+        correct_count: correctCount,
+        total_activities: totalActivities,
+        completed_at: updatedProgress.completedAt || null,
+        activity_results: activityResults,
+        mastery_level: masteryLevel,
+        attempts_count: attemptNumber,
+        last_attempt_at: newAttempt.completedAt,
+        srs_due_at: updatedProgress.srsDueAt ?? null,
+        srs_correct_streak: updatedProgress.srsCorrectStreak ?? 0,
+      }, { onConflict: 'parent_id,lesson_id' });
+    })();
+  };
+
+  const updateSrsState = (lessonId: string, correct: boolean) => {
+    const prev = lessonProgress[lessonId];
+    if (!prev) return;
+    const newStreak = correct ? (prev.srsCorrectStreak ?? 0) + 1 : 0;
+    const newDue = nextSrsDueDate(newStreak);
+    const updated = { ...prev, srsCorrectStreak: newStreak, srsDueAt: newDue };
+    setLessonProgress(prevP => ({ ...prevP, [lessonId]: updated }));
+    (async () => {
+      await supabase.from('lesson_progress').update({
+        srs_correct_streak: newStreak,
+        srs_due_at: newDue,
+      }).eq('parent_id', user!.id).eq('lesson_id', lessonId);
+    })();
+  };
+
   const getTotalXP = () => {
     return Object.values(lessonProgress)
       .filter(p => p.completed)
@@ -498,8 +686,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return (
     <AppContext.Provider value={{
       loading, students, homework, attendance: rawAttendance, results, announcements,
-      messages, unreadCount, markRead, sendMessage,
-      lessonProgress, saveLessonProgress, getTotalXP, gamification,
+      messages, unreadCount, markRead, sendMessage, contacts, loadContacts,
+      lessonProgress, lessonAttempts, saveLessonProgress, saveLessonAttempt, updateSrsState, getTotalXP, gamification,
     }}>
       {children}
     </AppContext.Provider>

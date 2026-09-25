@@ -7,30 +7,59 @@
     "scheme": "mobile",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
-"ios": {
+    "icon": "./assets/logo.png",
+    "ios": {
       "supportsTablet": false
     },
     "android": {
-      "package": "com.abdurahmankamal.MBKParentPortal"
+      "package": "com.MBKConnect",
+      "versionCode": 1,
+      "googleServicesFile": "./google-services.json",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png",
+        "backgroundColor": "#5784AD"
+      },
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.VIBRATE"
+      ],
+      "allowBackup": false,
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/logo.png"
     },
     "plugins": [
       "expo-router",
       "expo-font",
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#5784AD",
+          "defaultChannel": "default"
+        }
+      ],
       "expo-dev-client",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/splash-icon.png",
+          "backgroundColor": "#000000",
+          "image": "./assets/logo.png",
           "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#171717"
+          "dark": {
+            "image": "./assets/logo.png",
+            "backgroundColor": "#000000"
+          }
         }
       ],
-      "./withCmakePathMax"
+      "expo-sqlite"
     ],
     "experiments": {
       "typedRoutes": true

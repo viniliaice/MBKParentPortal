@@ -9,6 +9,7 @@ import { useApp } from '@/context/AppContext';
 
 const MENU_ITEMS = [
   { label: 'Homework', icon: 'book-outline' as const, route: '/homework', color: '#3D5AFE', desc: 'View pending & submitted tasks' },
+  { label: 'Quizzes', icon: 'help-circle-outline' as const, route: '/quizzes', color: '#F59E0B', desc: 'Take quizzes and view results' },
   { label: 'Attendance', icon: 'calendar-outline' as const, route: '/attendance', color: '#00BCD4', desc: 'Check daily attendance records' },
   { label: 'Academic Results', icon: 'bar-chart-outline' as const, route: '/results', color: '#2ECC71', desc: 'Exam scores and grades' },
 ];

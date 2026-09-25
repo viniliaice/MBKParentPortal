@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  Modal, TextInput, KeyboardAvoidingView, Platform, ScrollView,
+  Modal, TextInput, KeyboardAvoidingView, Platform, ScrollView, Alert, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,15 +9,20 @@ import { LinearGradient } from 'expo-linear-gradient';
 import AuroraBackground from '@/components/AuroraBackground';
 import { useApp } from '@/context/AppContext';
 import { AppMessage } from '@/data/mockData';
+import type { SupabaseContact } from '@/lib/supabase';
 
 export default function MessagesScreen() {
-  const { messages, unreadCount, markRead, sendMessage } = useApp();
+  const { messages, unreadCount, markRead, sendMessage, loadContacts } = useApp();
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<'inbox' | 'sent'>('inbox');
   const [selected, setSelected] = useState<AppMessage | null>(null);
   const [composing, setComposing] = useState(false);
   const [composeSubject, setComposeSubject] = useState('');
   const [composeBody, setComposeBody] = useState('');
+  const [contacts, setContacts] = useState<SupabaseContact[]>([]);
+  const [recipientId, setRecipientId] = useState<string | null>(null);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [sending, setSending] = useState(false);
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
 
   const filtered = messages.filter(m => (tab === 'inbox') === m.isInbox);
@@ -27,17 +32,42 @@ export default function MessagesScreen() {
     if (m.isInbox && !m.isRead) markRead(m.id);
   };
 
-  const doSend = () => {
-    if (!composeSubject.trim() || !composeBody.trim()) return;
-    sendMessage({
-      senderId: 'parent1', senderName: 'You',
-      recipientId: 'teacher1', recipientName: 'Ms. Johnson',
-      subject: composeSubject.trim(), body: composeBody.trim(),
-      isInbox: false,
+  const openCompose = async () => {
+    setRecipientId(null);
+    setComposing(true);
+    setContactsLoading(true);
+    const list = await loadContacts();
+    setContacts(list);
+    if (list.length === 1) setRecipientId(list[0].id);
+    setContactsLoading(false);
+  };
+
+  const doSend = async () => {
+    if (!recipientId) {
+      Alert.alert('Choose a recipient', 'Select who you are writing to.');
+      return;
+    }
+    if (!composeSubject.trim() || !composeBody.trim()) {
+      Alert.alert('Missing details', 'Please enter a subject and a message.');
+      return;
+    }
+    setSending(true);
+    const result = await sendMessage({
+      recipientId,
+      subject: composeSubject.trim(),
+      body: composeBody.trim(),
     });
+    setSending(false);
+
+    if (!result.ok) {
+      Alert.alert('Message not sent', result.error ?? 'Please try again.');
+      return;
+    }
+
     setComposing(false);
     setComposeSubject('');
     setComposeBody('');
+    setRecipientId(null);
     setTab('sent');
   };
 
@@ -46,7 +76,7 @@ export default function MessagesScreen() {
       <View style={{ flex: 1 }}>
         <View style={[styles.header, { paddingTop: topPad + 12 }]}>
           <Text style={styles.headerTitle}>Messages</Text>
-          <TouchableOpacity style={styles.composeBtn} onPress={() => setComposing(true)} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.composeBtn} onPress={openCompose} activeOpacity={0.8}>
             <LinearGradient colors={['#3D5AFE', '#00BCD4']} style={styles.composeBtnGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
               <Ionicons name="create-outline" size={18} color="#FFF" />
               <Text style={styles.composeBtnText}>Compose</Text>
@@ -114,15 +144,47 @@ export default function MessagesScreen() {
             <View style={[styles.modalHeader, { paddingTop: insets.top + 12 }]}>
               <TouchableOpacity onPress={() => setComposing(false)}><Text style={{ color: '#8892B0', fontSize: 15 }}>Cancel</Text></TouchableOpacity>
               <Text style={styles.modalTitle}>New Message</Text>
-              <TouchableOpacity onPress={doSend}><Text style={{ color: '#3D5AFE', fontSize: 15, fontWeight: '700' }}>Send</Text></TouchableOpacity>
+              <TouchableOpacity onPress={doSend} disabled={sending}>
+                <Text style={{ color: sending ? '#4A5080' : '#3D5AFE', fontSize: 15, fontWeight: '700' }}>Send</Text>
+              </TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled">
               <Text style={styles.composeLabel}>To</Text>
-              <View style={styles.composeInput}><Text style={{ color: '#8892B0' }}>Ms. Johnson (Class Teacher)</Text></View>
+              {contactsLoading ? (
+                <View style={styles.composeInput}><ActivityIndicator size="small" color="#3D5AFE" /></View>
+              ) : contacts.length === 0 ? (
+                <View style={styles.composeInput}>
+                  <Text style={{ color: '#8892B0' }}>
+                    No contacts are available for your account yet. Please contact the school office.
+                  </Text>
+                </View>
+              ) : (
+                contacts.map(c => (
+                  <TouchableOpacity
+                    key={c.id}
+                    style={[styles.composeInput, styles.contactRow, recipientId === c.id && styles.contactRowSelected]}
+                    onPress={() => setRecipientId(c.id)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons
+                      name={recipientId === c.id ? 'radio-button-on' : 'radio-button-off'}
+                      size={18}
+                      color={recipientId === c.id ? '#3D5AFE' : '#4A5080'}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>{c.name}</Text>
+                      <Text style={{ color: '#8892B0', fontSize: 12 }}>
+                        {c.class_name ? `${c.role} · ${c.class_name}` : c.role}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))
+              )}
               <Text style={styles.composeLabel}>Subject</Text>
               <TextInput style={styles.composeTextInput} value={composeSubject} onChangeText={setComposeSubject} placeholder="Enter subject…" placeholderTextColor="#4A5080" />
               <Text style={styles.composeLabel}>Message</Text>
               <TextInput style={[styles.composeTextInput, { height: 160, textAlignVertical: 'top' }]} value={composeBody} onChangeText={setComposeBody} placeholder="Write your message…" placeholderTextColor="#4A5080" multiline />
+              {sending && <ActivityIndicator style={{ marginTop: 16 }} color="#3D5AFE" />}
             </ScrollView>
           </KeyboardAvoidingView>
         </Modal>
@@ -164,5 +226,7 @@ const styles = StyleSheet.create({
   modalBodyText: { fontSize: 15, color: '#CCCCCC', lineHeight: 24 },
   composeLabel: { fontSize: 12, color: '#8892B0', fontWeight: '600', letterSpacing: 0.5, marginTop: 16, marginBottom: 6 },
   composeInput: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  contactRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  contactRowSelected: { borderColor: '#3D5AFE', backgroundColor: 'rgba(61,90,254,0.12)' },
   composeTextInput: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', color: '#FFFFFF', fontSize: 15 },
 });

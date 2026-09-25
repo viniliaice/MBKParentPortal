@@ -1,0 +1,76 @@
+# .easignore — what EAS Build uploads
+#
+# Why this file exists: EAS Build uploads only the files it does not ignore, and
+# when a `.easignore` file is present it is used **instead of** `.gitignore`
+# (https://docs.expo.dev/build-reference/easignore/). Two files the build needs are
+# deliberately not tracked by git, so they must be listed here with a `!` prefix,
+# after the rest of `.gitignore`, or the Android build fails with
+# `"google-services.json" is missing, make sure that the file exists` and the app
+# ships without its Supabase URL.
+#
+# Keep this file in step with `.gitignore`: whatever is added there must be added
+# here too, or it will be uploaded to the build servers. `tests/config/app-config.test.mjs`
+# checks the two `!` entries below, because losing them produces a confusing build
+# failure rather than an obvious one.
+
+# --- everything from .gitignore -------------------------------------------------
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Supabase CLI scratch state (project ref, pooler url, versions)
+supabase/.temp/
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# credentials — these stay OUT of the upload on purpose
+.env.*
+!.env.example
+*firebase-adminsdk*.json
+*-service-account*.json
+google-play-service-account.json
+
+# typescript
+*.tsbuildinfo
+
+# generated native folders
+/ios
+/android
+
+# --- files the build needs that git must never track ---------------------------
+
+# Android build input: app.json points at it, and the Google Services Gradle plugin
+# fails the build when the package inside disagrees with android.package.
+!google-services.json
+
+# EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY are read at build time
+# and inlined into the bundle. Both values are public by design (the anon key ships
+# inside the app), which is why uploading the file is acceptable. If anything
+# private is ever added to `.env`, move the public pair to EAS environment
+# variables instead and delete this line — see docs/notifications.md §4.
+!.env

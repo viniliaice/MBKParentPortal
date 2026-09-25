@@ -1,4 +1,4 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+# Learn more https://docs.github.com/en/get-started/getting-started/ignoring-files
 
 # dependencies
 node_modules/
@@ -8,6 +8,9 @@ node_modules/
 dist/
 web-build/
 expo-env.d.ts
+
+# Supabase CLI scratch state (project ref, pooler url, versions)
+supabase/.temp/
 
 # Native
 .kotlin/
@@ -31,7 +34,15 @@ yarn-error.*
 *.pem
 
 # local env files
-.env*.local
+.env
+.env.*
+!.env.example
+
+# credentials — must never be committed (see docs/security-model.md)
+google-services.json
+*firebase-adminsdk*.json
+*-service-account*.json
+google-play-service-account.json
 
 # typescript
 *.tsbuildinfo
@@ -39,4 +50,3 @@ yarn-error.*
 # generated native folders
 /ios
 /android
-.env

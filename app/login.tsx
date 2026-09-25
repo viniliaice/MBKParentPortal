@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, TextInput, TouchableOpacity,
+  View, Text, StyleSheet, TextInput, TouchableOpacity, Image,
   KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -40,9 +40,7 @@ export default function LoginScreen() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 20 }]} keyboardShouldPersistTaps="handled">
           <View style={styles.logoContainer}>
-            <LinearGradient colors={['#3D5AFE', '#00BCD4']} style={styles.logoCircle} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-              <Ionicons name="school" size={40} color="#FFFFFF" />
-            </LinearGradient>
+            <Image source={require('@/assets/logo.png')} style={styles.logoImage} resizeMode="contain" />
           </View>
 
           <Text style={styles.appName}>MBK Parent Portal</Text>
@@ -118,7 +116,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   scroll: { flexGrow: 1, paddingHorizontal: 24, alignItems: 'center' },
   logoContainer: { marginBottom: 20 },
-  logoCircle: { width: 88, height: 88, borderRadius: 44, alignItems: 'center', justifyContent: 'center', shadowColor: '#3D5AFE', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.4, shadowRadius: 20, elevation: 10 },
+  logoImage: { width: 100, height: 100, borderRadius: 50 },
   appName: { fontSize: 28, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.5, marginBottom: 8 },
   subtitle: { fontSize: 15, color: '#8892B0', marginBottom: 36 },
   card: { width: '100%', backgroundColor: 'rgba(20,29,58,0.9)', borderRadius: 24, padding: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
