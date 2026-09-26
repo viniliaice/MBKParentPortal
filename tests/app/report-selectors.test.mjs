@@ -406,6 +406,47 @@ describe('report selectors', { skip }, () => {
       // Final Monthly Score = round(89 * 0.4 + 70 * 0.6) = round(35.6 + 42) = 78
       assert.equal(calc.finalScore, 78);
     });
+
+    it('updates monthly result correctly once Discipline is entered', () => {
+      const initialExams = [
+        { studentId: 's1', subject: 'Science', examType: 'Homework', score: 35, total: 40, date: '2026-09-10' },
+        { studentId: 's1', subject: 'Science', examType: 'Attendance', score: 20, total: 20, date: '2026-09-15' },
+        { studentId: 's1', subject: 'Science', examType: 'Classwork', score: 34, total: 40, date: '2026-09-20' },
+        { studentId: 's1', subject: 'Science', examType: 'Quiz', score: 42, total: 60, date: '2026-09-25' },
+      ];
+
+      const initialCalc = selectors.calculateMonthlyScore(initialExams);
+      assert.equal(initialCalc.finalScore, 78);
+
+      // Now teacher enters Discipline: 12/20
+      const disciplineExam = {
+        studentId: 's1',
+        subject: 'Science',
+        examType: 'Discipline',
+        assessmentLabel: 'AKHLAAQ',
+        score: 12,
+        total: 20,
+        date: '2026-09-22',
+      };
+
+      const updatedCalc = selectors.calculateMonthlyScore([...initialExams, disciplineExam]);
+      // CA score: 89 + 12 = 101 out of 100 + 20 = 120 -> 101/120 = 84.17% -> 84%
+      assert.equal(updatedCalc.caScore, 101);
+      assert.equal(updatedCalc.caTotal, 120);
+      assert.equal(updatedCalc.caPct, 84);
+      // Quiz score: 42/60 -> 70%
+      assert.equal(updatedCalc.quizScore, 42);
+      assert.equal(updatedCalc.quizTotal, 60);
+      assert.equal(updatedCalc.quizPct, 70);
+      // Final: round(84 * 0.4 + 70 * 0.6) = round(33.6 + 42) = 76
+      assert.equal(updatedCalc.finalScore, 76);
+
+      const computedResults = selectors.computeMonthlyResults([...initialExams, disciplineExam]);
+      assert.equal(computedResults.length, 1);
+      assert.equal(computedResults[0].score, 76);
+      assert.equal(computedResults[0].components[0].score, 84);
+      assert.equal(computedResults[0].components[1].score, 70);
+    });
   });
 
   describe('attendance regression', () => {
@@ -511,6 +552,137 @@ describe('report selectors', { skip }, () => {
 
       const septemberFiltered = selectors.filterByMonth(results, 'September', '2026-2027');
       assert.deepEqual(septemberFiltered.map(r => r.id), ['res-sep']);
+    });
+  });
+
+  describe('end-to-end monthly report verification for parent UI', () => {
+    it('verifies exact fields, pending states, and updates between calculation and UI', () => {
+      // Step 1: Database record with stale month
+      // month = "August", date = "2026-09-17"
+      const caRecords = [
+        {
+          id: 'exam-hw',
+          studentId: 'pupil-1',
+          subject: 'Science',
+          examType: 'Homework',
+          assessmentLabel: 'HW1',
+          score: '35',
+          total: 40,
+          month: 'August', // Stale
+          date: '2026-09-17',
+          status: 'approved',
+          entryState: 'scored',
+        },
+        {
+          id: 'exam-att',
+          studentId: 'pupil-1',
+          subject: 'Science',
+          examType: 'Attendance',
+          assessmentLabel: 'ATTENDANCE',
+          score: 20,
+          total: 20,
+          month: 'August', // Stale
+          date: '2026-09-17',
+          status: 'approved',
+          entryState: 'scored',
+        },
+        {
+          id: 'exam-cw',
+          studentId: 'pupil-1',
+          subject: 'Science',
+          examType: 'Classwork',
+          assessmentLabel: 'CPW1',
+          score: 34,
+          total: 40,
+          month: 'August', // Stale
+          date: '2026-09-17',
+          status: 'approved',
+          entryState: 'scored',
+        },
+      ];
+
+      // Verification: Without quiz, no standalone result is published
+      const resultsBeforeQuiz = selectors.computeMonthlyResults(caRecords);
+      assert.equal(resultsBeforeQuiz.length, 0);
+
+      // Pending state: Quiz is missing
+      const pendingBefore = selectors
+        .computePendingReports(caRecords)
+        .filter(p => p.period === 'monthly');
+      assert.equal(pendingBefore.length, 1);
+      assert.equal(pendingBefore[0].month, 'September', 'Derived month is September');
+      assert.equal(pendingBefore[0].subject, 'Science');
+      assert.deepEqual(pendingBefore[0].missing, ['quiz']);
+
+      // UI View Scoping: Pending item appears in September view, NOT August view
+      const inSepView = selectors.pendingForView(pendingBefore, 'monthly', { month: 'Sep', yearKey: '2026-2027' });
+      assert.equal(inSepView.length, 1);
+      const inAugView = selectors.pendingForView(pendingBefore, 'monthly', { month: 'Aug', yearKey: '2025-2026' });
+      assert.equal(inAugView.length, 0);
+
+      // Step 2: Quiz is entered
+      const quizRecord = {
+        id: 'exam-qz',
+        studentId: 'pupil-1',
+        subject: 'Science',
+        examType: 'Quiz',
+        assessmentLabel: 'MT',
+        score: 42,
+        total: 60,
+        month: 'September',
+        date: '2026-09-25',
+        status: 'approved',
+        entryState: 'scored',
+      };
+
+      const allRecords = [...caRecords, quizRecord];
+
+      // Verification: Pending resolved
+      const pendingAfter = selectors
+        .computePendingReports(allRecords)
+        .filter(p => p.period === 'monthly');
+      assert.equal(pendingAfter.length, 0);
+
+      // Computed Results
+      const resultsAfterQuiz = selectors.computeMonthlyResults(allRecords);
+      assert.equal(resultsAfterQuiz.length, 1);
+      const res = resultsAfterQuiz[0];
+
+      // Month attribution
+      assert.equal(res.month, 'September');
+      assert.equal(res.subject, 'Science');
+
+      // Final percentage: round(89 * 0.4 + 70 * 0.6) = 78
+      assert.equal(res.score, 78);
+      assert.equal(res.total, 100);
+
+      // Breakdown components:
+      // CA component: 40% weight, 89% score
+      const caComponent = res.components.find(c => c.weight === 40);
+      assert.ok(caComponent);
+      assert.equal(caComponent.score, 89);
+      assert.equal(caComponent.total, 100);
+
+      // Quiz component: 60% weight, 70% score
+      const quizComponent = res.components.find(c => c.weight === 60);
+      assert.ok(quizComponent);
+      assert.equal(quizComponent.score, 70);
+      assert.equal(quizComponent.total, 100);
+
+      // UI helper assertions:
+      // Label formatted on SubjectResultCard
+      assert.equal(selectors.formatMonthYear(res.date, res.month), 'Sep 2026');
+      // Grade band
+      assert.equal(selectors.gradeFor(res.score, res.total), 'B+');
+      // Month counts and filters for MarksScreen chips
+      const counts = selectors.monthlyMonthCounts(resultsAfterQuiz);
+      assert.equal(counts.get('Sep'), 1);
+      assert.equal(counts.get('Aug'), undefined);
+
+      const filteredSep = selectors.filterByMonth(resultsAfterQuiz, 'Sep', '2026-2027');
+      assert.equal(filteredSep.length, 1);
+      const filteredAug = selectors.filterByMonth(resultsAfterQuiz, 'Aug', '2025-2026');
+      assert.equal(filteredAug.length, 0);
     });
   });
 });
