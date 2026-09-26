@@ -332,7 +332,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const monthly = computeMonthlyResults(rawExams, attendanceMap);
     const midterm = computeTermResults(rawExams, 'Midterm', 'midterm');
     const final = computeTermResults(rawExams, 'Final', 'final');
-    return [...monthly, ...midterm, ...final];
+    // Parent-facing annual average (0.5 × midterm + 0.5 × final per subject).
+    // Reuses the existing computed rows: it never re-derives scores from raw
+    // exams, so no grading rule changes.
+    const weighted = new Map<string, { sum: number; w: number }>();
+    for (const r of [...midterm, ...final]) {
+      const key = `${r.studentId}||${r.subject}`;
+      const acc = weighted.get(key) ?? { sum: 0, w: 0 };
+      acc.sum += (r.score / r.total) * 100 * 0.5;
+      acc.w += 0.5;
+      weighted.set(key, acc);
+    }
+    const annual: ComputedResult[] = Array.from(weighted.entries())
+      .filter(([, acc]) => acc.w > 0)
+      .map(([key, acc]) => {
+        const [studentId, subject] = key.split('||');
+        return {
+          id: `annual-${studentId}-${subject}`,
+          studentId,
+          subject,
+          score: Math.round(acc.sum / acc.w),
+          total: 100,
+          examType: 'annual',
+          month: '',
+          date: '',
+          components: [],
+        };
+      });
+    return [...monthly, ...midterm, ...final, ...annual];
   }, [rawExams, attendanceMap]);
 
   useEffect(() => {
@@ -683,9 +710,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       .reduce((sum, p) => sum + p.xpEarned, 0);
   };
 
+  // Announcements sorted newest-first: the annual-unread computation below keeps
+  // its own snapshot, so re-rendering the list order never changes the count it
+  // was based on.
+  const sortedAnnouncements = useMemo(
+    () => [...announcements].sort((a, b) => b.date.localeCompare(a.date)),
+    [announcements],
+  );
+
   return (
     <AppContext.Provider value={{
-      loading, students, homework, attendance: rawAttendance, results, announcements,
+      loading, students, homework, attendance: rawAttendance, results, announcements: sortedAnnouncements,
       messages, unreadCount, markRead, sendMessage, contacts, loadContacts,
       lessonProgress, lessonAttempts, saveLessonProgress, saveLessonAttempt, updateSrsState, getTotalXP, gamification,
     }}>

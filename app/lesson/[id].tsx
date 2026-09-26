@@ -10,6 +10,7 @@ import AuroraBackground from '@/components/AuroraBackground';
 import ActivityRenderer from '@/components/ActivityRenderer';
 import ConceptAnimation from '@/components/ConceptAnimation';
 import CelebrationOverlay from '@/components/CelebrationOverlay';
+import { useColors } from '@/hooks/useColors';
 import { getLessonById, getTopicById } from '@/data/learningData';
 import { useApp } from '@/context/AppContext';
 import * as Haptics from 'expo-haptics';
@@ -28,6 +29,7 @@ const TYPE_DESCRIPTIONS: Record<string, string> = {
 export default function LessonScreen() {
   const { id, topicId } = useLocalSearchParams<{ id: string; topicId: string }>();
   const { saveLessonAttempt, gamification } = useApp();
+  const c = useColors();
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
 
@@ -51,7 +53,7 @@ export default function LessonScreen() {
     return (
       <AuroraBackground>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ color: '#FFFFFF', fontSize: 16 }}>Lesson not found</Text>
+          <Text style={{ color: c.foreground, fontSize: 16 }}>Lesson not found</Text>
         </View>
       </AuroraBackground>
     );
@@ -119,14 +121,14 @@ export default function LessonScreen() {
     <AuroraBackground>
       <View style={{ flex: 1 }}>
         <View style={[styles.header, { paddingTop: topPad + 8 }]}>
-          <TouchableOpacity onPress={handleExit} style={styles.closeBtn}>
-            <Ionicons name="close" size={20} color="#FFFFFF" />
+          <TouchableOpacity onPress={handleExit} style={[styles.closeBtn, { backgroundColor: c.card, borderColor: c.border }]}>
+            <Ionicons name="close" size={20} color={c.foreground} />
           </TouchableOpacity>
           <View style={styles.progressContainer}>
-            <View style={styles.progressTrack}>
+            <View style={[styles.progressTrack, { backgroundColor: c.border }]}>
               <View style={[styles.progressFill, { width: `${progress * 100}%` as any, backgroundColor: topic.color }]} />
             </View>
-            <Text style={styles.progressLabel}>{currentStepNum + 1}/{totalSteps}</Text>
+            <Text style={[styles.progressLabel, { color: c.mutedForeground }]}>{currentStepNum + 1}/{totalSteps}</Text>
           </View>
         </View>
 
@@ -145,20 +147,20 @@ export default function LessonScreen() {
                 <View style={[styles.introIcon, { backgroundColor: `${topic.color}22` }]}>
                   <Ionicons name={topic.iconName as any} size={40} color={topic.color} />
                 </View>
-                <Text style={styles.lessonTitle}>{lesson.title}</Text>
-                <View style={[styles.objectiveBox, { borderColor: `${topic.color}44` }]}>
-                  <Text style={styles.objectiveLabel}>GOAL</Text>
-                  <Text style={styles.objectiveText}>{lesson.objective}</Text>
+                <Text style={[styles.lessonTitle, { color: c.foreground }]}>{lesson.title}</Text>
+                <View style={[styles.objectiveBox, { borderColor: `${topic.color}44`, backgroundColor: c.card }]}>
+                  <Text style={[styles.objectiveLabel, { color: c.mutedForeground }]}>GOAL</Text>
+                  <Text style={[styles.objectiveText, { color: c.foreground }]}>{lesson.objective}</Text>
                 </View>
-                <View style={styles.explanationBox}>
-                  <Text style={styles.explanationText}>{lesson.explanation}</Text>
+                <View style={[styles.explanationBox, { backgroundColor: c.muted }]}>
+                  <Text style={[styles.explanationText, { color: c.mutedForeground }]}>{lesson.explanation}</Text>
                 </View>
                 <View style={styles.activityTypesPreview}>
-                  <Text style={styles.activityTypesLabel}>THIS LESSON USES:</Text>
+                  <Text style={[styles.activityTypesLabel, { color: c.mutedForeground }]}>THIS LESSON USES:</Text>
                   <View style={styles.activityTypesRow}>
                     {[...new Set(activities.map(a => a.type))].map(type => (
-                      <View key={type} style={styles.activityTypePill}>
-                        <Text style={styles.activityTypePillText}>{TYPE_DESCRIPTIONS[type]}</Text>
+                      <View key={type} style={[styles.activityTypePill, { backgroundColor: c.muted }]}>
+                        <Text style={[styles.activityTypePillText, { color: c.mutedForeground }]}>{TYPE_DESCRIPTIONS[type]}</Text>
                       </View>
                     ))}
                   </View>
@@ -171,13 +173,13 @@ export default function LessonScreen() {
             ) : (
               <Animated.View style={[styles.activityContainer, { opacity: fadeAnim }]}>
                 <View style={styles.activityHeader}>
-                  <Text style={styles.activityNum}>Question {(step as number) + 1} of {activities.length}</Text>
+                  <Text style={[styles.activityNum, { color: c.mutedForeground }]}>Question {(step as number) + 1} of {activities.length}</Text>
                   <View style={[styles.activityTypeBadge, { backgroundColor: `${topic.color}22`, borderColor: `${topic.color}44` }]}>
                     <Text style={[styles.activityTypeBadgeText, { color: topic.color }]}>{TYPE_DESCRIPTIONS[currentActivity!.type]}</Text>
                   </View>
                 </View>
-                <View style={styles.questionBox}>
-                  <Text style={styles.questionText}>{currentActivity!.question}</Text>
+                <View style={[styles.questionBox, { backgroundColor: c.card, borderColor: c.border }]}>
+                  <Text style={[styles.questionText, { color: c.foreground }]}>{currentActivity!.question}</Text>
                 </View>
                 <ActivityRenderer
                   key={step}
@@ -186,13 +188,13 @@ export default function LessonScreen() {
                   onIncorrect={handleIncorrect}
                 />
                 <TouchableOpacity
-                  style={[styles.nextBtn, { backgroundColor: answeredCurrent ? topic.color : 'rgba(255,255,255,0.1)' }]}
+                  style={[styles.nextBtn, { backgroundColor: answeredCurrent ? topic.color : c.muted }]}
                   onPress={handleNext}
                   activeOpacity={0.85}
                   disabled={!answeredCurrent}
                 >
-                  <Text style={[styles.nextBtnText, !answeredCurrent && { color: '#4A5080' }]}>{(step as number) < activities.length - 1 ? 'Next' : 'Finish'}</Text>
-                  <Ionicons name={(step as number) < activities.length - 1 ? 'arrow-forward' : 'checkmark'} size={18} color={answeredCurrent ? '#FFFFFF' : '#4A5080'} />
+                  <Text style={[styles.nextBtnText, { color: answeredCurrent ? '#FFFFFF' : c.mutedForeground }]}>{(step as number) < activities.length - 1 ? 'Next' : 'Finish'}</Text>
+                  <Ionicons name={(step as number) < activities.length - 1 ? 'arrow-forward' : 'checkmark'} size={18} color={answeredCurrent ? '#FFFFFF' : c.mutedForeground} />
                 </TouchableOpacity>
               </Animated.View>
             )}

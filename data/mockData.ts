@@ -70,7 +70,7 @@ export function getGrade(score: number, total: number): string {
 
 export function getGradeColor(score: number, total: number): string {
   const p = (score / total) * 100;
-  if (p >= 80) return '#2ECC71';
-  if (p >= 60) return '#F59E0B';
-  return '#FF5370';
+  if (p >= 80) return '#1F9D55';
+  if (p >= 60) return '#C47F0B';
+  return '#E0485F';
 }

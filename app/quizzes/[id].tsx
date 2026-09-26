@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import AuroraBackground from '@/components/AuroraBackground';
+import { useColors } from '@/hooks/useColors';
 import { supabase, type Quiz, type QuizQuestion } from '@/lib/supabase';
 import { shuffleArray } from '@/utils/seededRandom';
 
@@ -21,6 +22,7 @@ interface AnswerEntry {
 
 export default function TakeQuizScreen() {
   const { id: quizId, studentId } = useLocalSearchParams<{ id: string; studentId: string }>();
+  const c = useColors();
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
 
@@ -160,6 +162,7 @@ export default function TakeQuizScreen() {
   };
 
   const selectOption = (label: string) => {
+    if (!currentQuestion) return;
     setAnswers(prev => ({
       ...prev,
       [currentQuestion.id]: {
@@ -173,6 +176,7 @@ export default function TakeQuizScreen() {
   };
 
   const setTextAnswer = (text: string) => {
+    if (!currentQuestion) return;
     setAnswers(prev => ({
       ...prev,
       [currentQuestion.id]: {
@@ -200,8 +204,8 @@ export default function TakeQuizScreen() {
     return (
       <AuroraBackground>
         <View style={[styles.center, { paddingTop: topPad }]}>
-          <Ionicons name="hourglass-outline" size={36} color="#4A5080" />
-          <Text style={styles.loadingText}>Loading quiz...</Text>
+          <Ionicons name="hourglass-outline" size={36} color={c.mutedForeground} />
+          <Text style={[styles.loadingText, { color: c.mutedForeground }]}>Loading quiz...</Text>
         </View>
       </AuroraBackground>
     );
@@ -216,28 +220,28 @@ export default function TakeQuizScreen() {
               { text: 'Stay', style: 'cancel' },
               { text: 'Leave', style: 'destructive', onPress: () => router.back() },
             ])}
-            style={styles.backBtn}
+            style={[styles.backBtn, { backgroundColor: c.card, borderColor: c.border }]}
           >
-            <Ionicons name="close" size={22} color="#FFFFFF" />
+            <Ionicons name="close" size={22} color={c.foreground} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle} numberOfLines={1}>{quiz.title}</Text>
+          <Text style={[styles.headerTitle, { color: c.foreground }]} numberOfLines={1}>{quiz.title}</Text>
           <View style={{ width: 36 }} />
         </View>
 
         <View style={styles.timerRow}>
           {timeLeft !== null && (
-            <View style={[styles.timer, timeLeft < 60 && styles.timerUrgent]}>
-              <Ionicons name="timer-outline" size={14} color={timeLeft < 60 ? '#FF5370' : '#F59E0B'} />
-              <Text style={[styles.timerText, timeLeft < 60 && { color: '#FF5370' }]}>
+            <View style={[styles.timer, { backgroundColor: 'rgba(245,158,11,0.12)' }, timeLeft < 60 && { backgroundColor: 'rgba(255,83,112,0.15)' }]}>
+              <Ionicons name="timer-outline" size={14} color={timeLeft < 60 ? c.destructive : c.warning} />
+              <Text style={[styles.timerText, { color: timeLeft < 60 ? c.destructive : c.warning }]}>
                 {formatTime(timeLeft)}
               </Text>
             </View>
           )}
-          <Text style={styles.counter}>{currentIndex + 1} of {questions.length}</Text>
+          <Text style={[styles.counter, { color: c.mutedForeground }]}>{currentIndex + 1} of {questions.length}</Text>
         </View>
 
-        <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${progress}%` as any }]} />
+        <View style={[styles.progressTrack, { backgroundColor: c.border }]}>
+          <View style={[styles.progressFill, { width: `${progress}%` as any, backgroundColor: c.primary }]} />
         </View>
 
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20 }}>
@@ -247,8 +251,9 @@ export default function TakeQuizScreen() {
                 key={q.id}
                 style={[
                   styles.dot,
-                  i === currentIndex && styles.dotActive,
-                  answers[q.id]?.answer?.trim() && styles.dotAnswered,
+                  { backgroundColor: c.border },
+                  i === currentIndex && { backgroundColor: c.primary, width: 20 },
+                  answers[q.id]?.answer?.trim() && { backgroundColor: c.accent },
                 ]}
                 onPress={() => setCurrentIndex(i)}
               />
@@ -258,20 +263,20 @@ export default function TakeQuizScreen() {
           {currentQuestion && (
             <>
               <View style={styles.questionMeta}>
-                <Text style={styles.questionType}>
+                <Text style={[styles.questionType, { color: c.mutedForeground }]}>
                   {isDirect ? 'Direct Answer' : 'Multiple Choice'}
                 </Text>
-                <Text style={styles.questionPoints}>{currentQuestion.points} pt{currentQuestion.points !== 1 ? 's' : ''}</Text>
+                <Text style={[styles.questionPoints, { color: c.gold }]}>{currentQuestion.points} pt{currentQuestion.points !== 1 ? 's' : ''}</Text>
               </View>
 
-              <Text style={styles.prompt}>{currentQuestion.promptSnapshot}</Text>
+              <Text style={[styles.prompt, { color: c.foreground }]}>{currentQuestion.promptSnapshot}</Text>
 
               {isDirect ? (
                 <TextInput
-                  style={styles.textarea}
+                  style={[styles.textarea, { backgroundColor: c.card, borderColor: c.border, color: c.foreground }]}
                   multiline
                   placeholder="Type your answer..."
-                  placeholderTextColor="#4A5080"
+                  placeholderTextColor={c.mutedForeground}
                   value={answers[currentQuestion.id]?.answer || ''}
                   onChangeText={setTextAnswer}
                 />
@@ -284,10 +289,11 @@ export default function TakeQuizScreen() {
                         key={oi}
                         style={[
                           styles.optionBtn,
-                          isSelected && styles.optionSelected,
+                          { backgroundColor: c.card, borderColor: c.border },
                           isSelected && {
-                            borderColor: '#3D5AFE',
-                            shadowColor: '#3D5AFE',
+                            borderColor: c.primary,
+                            backgroundColor: `${c.primary}14`,
+                            shadowColor: c.primary,
                             shadowOffset: { width: 0, height: 0 },
                             shadowOpacity: 0.6,
                             shadowRadius: 12,
@@ -297,17 +303,17 @@ export default function TakeQuizScreen() {
                         onPress={() => selectOption(opt.label)}
                         activeOpacity={0.8}
                       >
-                        <View style={[styles.optionRadio, isSelected && styles.optionRadioSelected]}>
-                          {isSelected && <View style={styles.optionRadioInner} />}
+                        <View style={[styles.optionRadio, { borderColor: c.border }, isSelected && { borderColor: c.primary }]}>
+                          {isSelected && <View style={[styles.optionRadioInner, { backgroundColor: c.primary }]} />}
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.optionLabel}>{opt.label}.</Text>
-                          <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>
+                          <Text style={[styles.optionLabel, { color: c.mutedForeground }]}>{opt.label}.</Text>
+                          <Text style={[styles.optionText, { color: isSelected ? c.foreground : c.mutedForeground }]}>
                             {opt.text}
                           </Text>
                         </View>
                         {isSelected && (
-                          <Ionicons name="checkmark-circle" size={20} color="#3D5AFE" />
+                          <Ionicons name="checkmark-circle" size={20} color={c.primary} />
                         )}
                       </TouchableOpacity>
                     );
@@ -325,11 +331,11 @@ export default function TakeQuizScreen() {
               onPress={() => setCurrentIndex(prev => Math.max(0, prev - 1))}
               disabled={currentIndex === 0}
             >
-              <Ionicons name="arrow-back" size={18} color={currentIndex === 0 ? '#4A5080' : '#FFFFFF'} />
-              <Text style={[styles.navBtnText, currentIndex === 0 && { color: '#4A5080' }]}>Prev</Text>
+              <Ionicons name="arrow-back" size={18} color={currentIndex === 0 ? c.mutedForeground : c.foreground} />
+              <Text style={[styles.navBtnText, { color: currentIndex === 0 ? c.mutedForeground : c.foreground }]}>Prev</Text>
             </TouchableOpacity>
 
-            <Text style={styles.answeredCount}>
+            <Text style={[styles.answeredCount, { color: c.mutedForeground }]}>
               {answeredCount}/{questions.length} answered
             </Text>
 
@@ -339,7 +345,7 @@ export default function TakeQuizScreen() {
                 onPress={confirmSubmit}
                 disabled={submitting}
               >
-                <LinearGradient colors={['#3D5AFE', '#00BCD4']} style={styles.submitGrad}>
+                <LinearGradient colors={[c.primary, c.secondary]} style={styles.submitGrad}>
                   <Text style={styles.submitText}>{submitting ? 'Submitting...' : 'Submit'}</Text>
                   <Ionicons name="checkmark" size={18} color="#FFFFFF" />
                 </LinearGradient>
@@ -349,8 +355,8 @@ export default function TakeQuizScreen() {
                 style={styles.navBtn}
                 onPress={() => setCurrentIndex(prev => Math.min(questions.length - 1, prev + 1))}
               >
-                <Text style={styles.navBtnText}>Next</Text>
-                <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+                <Text style={[styles.navBtnText, { color: c.foreground }]}>Next</Text>
+                <Ionicons name="arrow-forward" size={18} color={c.foreground} />
               </TouchableOpacity>
             )}
           </View>
@@ -362,55 +368,47 @@ export default function TakeQuizScreen() {
 
 const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
-  loadingText: { color: '#8892B0', fontSize: 15 },
+  loadingText: { fontSize: 15 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 8 },
-  backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 16, fontWeight: '700', color: '#FFFFFF', flex: 1, textAlign: 'center', marginHorizontal: 10 },
+  backBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  headerTitle: { fontSize: 16, fontWeight: '700', flex: 1, textAlign: 'center', marginHorizontal: 10 },
   timerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 8 },
-  timer: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(245,158,11,0.12)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4 },
-  timerUrgent: { backgroundColor: 'rgba(255,83,112,0.15)' },
-  timerText: { fontSize: 14, fontWeight: '700', color: '#F59E0B' },
-  counter: { fontSize: 13, color: '#8892B0', fontWeight: '500' },
-  progressTrack: { height: 3, backgroundColor: 'rgba(255,255,255,0.08)', marginHorizontal: 20, borderRadius: 2, marginBottom: 12 },
-  progressFill: { height: 3, backgroundColor: '#3D5AFE', borderRadius: 2 },
+  timer: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4 },
+  timerText: { fontSize: 14, fontWeight: '700' },
+  counter: { fontSize: 13, fontWeight: '500' },
+  progressTrack: { height: 3, marginHorizontal: 20, borderRadius: 2, marginBottom: 12 },
+  progressFill: { height: 3, borderRadius: 2 },
   dotRow: { flexDirection: 'row', gap: 6, marginBottom: 20, flexWrap: 'wrap' },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.15)' },
-  dotActive: { backgroundColor: '#3D5AFE', width: 20, borderRadius: 4 },
-  dotAnswered: { backgroundColor: '#2ECC71' },
+  dot: { width: 8, height: 8, borderRadius: 4 },
   questionMeta: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  questionType: { fontSize: 11, fontWeight: '700', color: '#8892B0', textTransform: 'uppercase', letterSpacing: 0.5 },
-  questionPoints: { fontSize: 11, fontWeight: '700', color: '#F59E0B' },
-  prompt: { fontSize: 20, fontWeight: '700', color: '#FFFFFF', lineHeight: 28, marginBottom: 24 },
+  questionType: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  questionPoints: { fontSize: 11, fontWeight: '700' },
+  prompt: { fontSize: 20, fontWeight: '700', lineHeight: 28, marginBottom: 24 },
   textarea: {
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', borderRadius: 16,
-    backgroundColor: 'rgba(20,29,58,0.9)', color: '#FFFFFF', fontSize: 15,
+    borderWidth: 1, borderRadius: 16,
+    fontSize: 15,
     padding: 16, minHeight: 140, textAlignVertical: 'top', lineHeight: 22,
   },
   optionsContainer: { gap: 12 },
   optionBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: 'rgba(20,29,58,0.9)', borderRadius: 16,
-    padding: 16, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.07)',
-  },
-  optionSelected: {
-    borderColor: '#3D5AFE', backgroundColor: 'rgba(61,90,254,0.08)',
+    borderRadius: 16,
+    padding: 16, borderWidth: 1.5,
   },
   optionRadio: {
     width: 22, height: 22, borderRadius: 11,
-    borderWidth: 2, borderColor: 'rgba(255,255,255,0.2)',
+    borderWidth: 2,
     alignItems: 'center', justifyContent: 'center',
   },
-  optionRadioSelected: { borderColor: '#3D5AFE' },
-  optionRadioInner: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#3D5AFE' },
-  optionLabel: { fontSize: 13, fontWeight: '700', color: '#8892B0', marginBottom: 2 },
-  optionText: { fontSize: 15, color: '#CCCCCC', lineHeight: 20 },
-  optionTextSelected: { color: '#FFFFFF' },
+  optionRadioInner: { width: 12, height: 12, borderRadius: 6 },
+  optionLabel: { fontSize: 13, fontWeight: '700', marginBottom: 2 },
+  optionText: { fontSize: 15, lineHeight: 20 },
   footer: { paddingHorizontal: 20 },
   footerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   navBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 12, paddingHorizontal: 16 },
   navBtnDisabled: { opacity: 0.4 },
-  navBtnText: { fontSize: 14, fontWeight: '600', color: '#FFFFFF' },
-  answeredCount: { fontSize: 12, color: '#8892B0', fontWeight: '500' },
+  navBtnText: { fontSize: 14, fontWeight: '600' },
+  answeredCount: { fontSize: 12, fontWeight: '500' },
   submitBtn: { borderRadius: 14, overflow: 'hidden' },
   submitGrad: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 12, paddingHorizontal: 20 },
   submitText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },

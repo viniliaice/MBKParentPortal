@@ -1,10 +1,11 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Linking } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import AuroraBackground from '@/components/AuroraBackground';
+import TopBar from '@/components/TopBar';
+import { useColors } from '@/hooks/useColors';
 import { PRIVACY_POLICY_URL, SUPPORT_EMAIL, POLICY_LAST_UPDATED } from '@/constants/legal';
 
 /**
@@ -71,8 +72,7 @@ const SECTIONS: { title: string; body: string[] }[] = [
 ];
 
 export default function LegalScreen() {
-  const insets = useSafeAreaInsets();
-  const topPad = Platform.OS === 'web' ? 67 : insets.top;
+  const c = useColors();
 
   const openPolicy = async () => {
     if (!PRIVACY_POLICY_URL) return;
@@ -87,50 +87,44 @@ export default function LegalScreen() {
   return (
     <AuroraBackground>
       <View style={{ flex: 1 }}>
-        <View style={[styles.header, { paddingTop: topPad + 12 }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Privacy & Data</Text>
-          <View style={{ width: 36 }} />
-        </View>
+        <TopBar title="Privacy & Data" />
 
         <ScrollView contentContainerStyle={styles.body}>
-          <Text style={styles.updated}>Last updated {POLICY_LAST_UPDATED}</Text>
+          <Text style={[styles.updated, { color: c.mutedForeground }]}>Last updated {POLICY_LAST_UPDATED}</Text>
 
           {SECTIONS.map(section => (
-            <View key={section.title} style={styles.card}>
-              <Text style={styles.sectionTitle}>{section.title}</Text>
+            <View key={section.title} style={[styles.card, { backgroundColor: c.card, borderColor: c.border }]}>
+              <Text style={[styles.sectionTitle, { color: c.foreground }]}>{section.title}</Text>
               {section.body.map(line => (
-                <Text key={line} style={styles.paragraph}>
+                <Text key={line} style={[styles.paragraph, { color: c.mutedForeground }]}>
                   {line}
                 </Text>
               ))}
             </View>
           ))}
 
-          <TouchableOpacity style={styles.action} onPress={() => router.push('/account')} activeOpacity={0.8}>
-            <Ionicons name="person-remove-outline" size={20} color="#FF5370" />
-            <Text style={[styles.actionText, { color: '#FF5370' }]}>Ask the school to close my account</Text>
-            <Ionicons name="chevron-forward" size={16} color="#8892B0" />
+          <TouchableOpacity style={[styles.action, { backgroundColor: c.card, borderColor: c.border }]} onPress={() => router.push('/account')} activeOpacity={0.8}>
+            <Ionicons name="person-remove-outline" size={20} color={c.destructive} />
+            <Text style={[styles.actionText, { color: c.destructive }]}>Ask the school to close my account</Text>
+            <Ionicons name="chevron-forward" size={16} color={c.mutedForeground} />
           </TouchableOpacity>
 
           {PRIVACY_POLICY_URL ? (
-            <TouchableOpacity style={styles.action} onPress={openPolicy} activeOpacity={0.8}>
-              <Ionicons name="open-outline" size={20} color="#3D5AFE" />
-              <Text style={[styles.actionText, { color: '#3D5AFE' }]}>Read the full policy</Text>
-              <Ionicons name="chevron-forward" size={16} color="#8892B0" />
+            <TouchableOpacity style={[styles.action, { backgroundColor: c.card, borderColor: c.border }]} onPress={openPolicy} activeOpacity={0.8}>
+              <Ionicons name="open-outline" size={20} color={c.primary} />
+              <Text style={[styles.actionText, { color: c.primary }]}>Read the full policy</Text>
+              <Ionicons name="chevron-forward" size={16} color={c.mutedForeground} />
             </TouchableOpacity>
           ) : null}
 
           {SUPPORT_EMAIL ? (
-            <TouchableOpacity style={styles.action} onPress={contact} activeOpacity={0.8}>
-              <Ionicons name="mail-outline" size={20} color="#3D5AFE" />
-              <Text style={[styles.actionText, { color: '#3D5AFE' }]}>{SUPPORT_EMAIL}</Text>
-              <Ionicons name="chevron-forward" size={16} color="#8892B0" />
+            <TouchableOpacity style={[styles.action, { backgroundColor: c.card, borderColor: c.border }]} onPress={contact} activeOpacity={0.8}>
+              <Ionicons name="mail-outline" size={20} color={c.primary} />
+              <Text style={[styles.actionText, { color: c.primary }]}>{SUPPORT_EMAIL}</Text>
+              <Ionicons name="chevron-forward" size={16} color={c.mutedForeground} />
             </TouchableOpacity>
           ) : (
-            <Text style={styles.pendingNote}>
+            <Text style={[styles.pendingNote, { color: c.mutedForeground }]}>
               This screen is a summary. The school’s published policy — which covers this app and the website — is
               the version that applies.
             </Text>
@@ -142,15 +136,12 @@ export default function LegalScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 12 },
-  backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: '#FFFFFF' },
   body: { padding: 20, paddingBottom: 60, gap: 14 },
-  updated: { color: '#4A5080', fontSize: 12 },
-  card: { backgroundColor: 'rgba(20,29,58,0.9)', borderRadius: 18, padding: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)', gap: 10 },
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#FFFFFF' },
-  paragraph: { fontSize: 14, lineHeight: 21, color: '#B9C2DA' },
-  action: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: 'rgba(20,29,58,0.9)', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
+  updated: { fontSize: 12 },
+  card: { borderRadius: 18, padding: 18, borderWidth: 1, gap: 10 },
+  sectionTitle: { fontSize: 16, fontWeight: '800' },
+  paragraph: { fontSize: 14, lineHeight: 21 },
+  action: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, padding: 16, borderWidth: 1 },
   actionText: { flex: 1, fontSize: 15, fontWeight: '600' },
-  pendingNote: { color: '#8892B0', fontSize: 12, lineHeight: 18, paddingHorizontal: 4 },
+  pendingNote: { fontSize: 12, lineHeight: 18, paddingHorizontal: 4 },
 });

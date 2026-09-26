@@ -1,27 +1,38 @@
 import React from 'react';
-import { Platform, StyleSheet, useColorScheme, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { Tabs } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
+import { useScheme } from '@/context/ThemeContext';
+import { useApp } from '@/context/AppContext';
+import { useColors } from '@/hooks/useColors';
 
+/**
+ * Primary navigation reflects the app's parent purpose: Home (marks at a
+ * glance), Marks (reports), Messages (school communication), More (secondary).
+ * Learning stays registered (route must exist) but is demoted out of the tab
+ * bar and reached from More, because its backing tables do not exist in the
+ * live database (docs/app-db-contract.md).
+ */
 function TabLayout() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const { isDark } = useScheme();
+  const c = useColors();
+  const { unreadCount } = useApp();
   const isIOS = Platform.OS === 'ios';
   const isWeb = Platform.OS === 'web';
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#3D5AFE',
-        tabBarInactiveTintColor: '#8892B0',
+        tabBarActiveTintColor: c.primary,
+        tabBarInactiveTintColor: c.mutedForeground,
         headerShown: false,
         tabBarStyle: {
           position: 'absolute',
-          backgroundColor: isIOS ? 'transparent' : '#0B1026',
+          backgroundColor: isIOS ? 'transparent' : c.card,
           borderTopWidth: 1,
-          borderTopColor: 'rgba(255,255,255,0.08)',
+          borderTopColor: c.border,
           elevation: 0,
           ...(isWeb ? { height: 84 } : {}),
         },
@@ -29,35 +40,35 @@ function TabLayout() {
           isIOS ? (
             <BlurView
               intensity={80}
-              tint="dark"
+              tint={isDark ? 'dark' : 'light'}
               style={StyleSheet.absoluteFill}
             />
-          ) : isWeb ? (
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: '#0B1026' }]} />
-          ) : null,
+          ) : (
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: c.card }]} />
+          ),
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color, size }) =>
+          tabBarIcon: ({ color, size, focused }) =>
             isIOS ? (
-              <SymbolView name="house" tintColor={color} size={size} />
+              <SymbolView name={focused ? 'house.fill' : 'house'} tintColor={color} size={size} />
             ) : (
-              <Ionicons name="home-outline" size={size} color={color} />
+              <Ionicons name={focused ? 'home' : 'home-outline'} size={size} color={color} />
             ),
         }}
       />
       <Tabs.Screen
-        name="learning"
+        name="marks"
         options={{
-          title: 'Learn',
-          tabBarIcon: ({ color, size }) =>
+          title: 'Marks',
+          tabBarIcon: ({ color, size, focused }) =>
             isIOS ? (
-              <SymbolView name="book" tintColor={color} size={size} />
+              <SymbolView name={focused ? 'chart.bar.fill' : 'chart.bar'} tintColor={color} size={size} />
             ) : (
-              <Ionicons name="school-outline" size={size} color={color} />
+              <Ionicons name={focused ? 'stats-chart' : 'stats-chart-outline'} size={size} color={color} />
             ),
         }}
       />
@@ -65,11 +76,13 @@ function TabLayout() {
         name="messages"
         options={{
           title: 'Messages',
-          tabBarIcon: ({ color, size }) =>
+          tabBarBadge: unreadCount > 0 ? (unreadCount > 99 ? '99+' : unreadCount) : undefined,
+          tabBarBadgeStyle: { backgroundColor: c.destructive, color: '#FFFFFF', fontSize: 11 },
+          tabBarIcon: ({ color, size, focused }) =>
             isIOS ? (
-              <SymbolView name="envelope" tintColor={color} size={size} />
+              <SymbolView name={focused ? 'envelope.fill' : 'envelope'} tintColor={color} size={size} />
             ) : (
-              <Ionicons name="mail-outline" size={size} color={color} />
+              <Ionicons name={focused ? 'mail-unread' : 'mail-unread-outline'} size={size} color={color} />
             ),
         }}
       />
@@ -77,12 +90,18 @@ function TabLayout() {
         name="more"
         options={{
           title: 'More',
-          tabBarIcon: ({ color, size }) =>
+          tabBarIcon: ({ color, size, focused }) =>
             isIOS ? (
-              <SymbolView name="square.grid.2x2" tintColor={color} size={size} />
+              <SymbolView name={focused ? 'square.grid.2x2.fill' : 'square.grid.2x2'} tintColor={color} size={size} />
             ) : (
-              <Ionicons name="grid-outline" size={size} color={color} />
+              <Ionicons name={focused ? 'grid' : 'grid-outline'} size={size} color={color} />
             ),
+        }}
+      />
+      <Tabs.Screen
+        name="learning"
+        options={{
+          href: null,
         }}
       />
     </Tabs>

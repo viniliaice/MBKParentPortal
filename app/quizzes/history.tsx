@@ -2,11 +2,13 @@ import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, ActivityIndicator,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import AuroraBackground from '@/components/AuroraBackground';
+import ChildrenSelector from '@/components/ChildrenSelector';
+import TopBar from '@/components/TopBar';
+import { EmptyState } from '@/components/StateViews';
+import { useColors } from '@/hooks/useColors';
 import { supabase, type QuizAttempt, type Quiz } from '@/lib/supabase';
 import { useApp } from '@/context/AppContext';
 
@@ -14,21 +16,22 @@ type AttemptWithQuiz = QuizAttempt & { quiz_title?: string };
 
 export default function QuizHistoryScreen() {
   const { students } = useApp();
-  const insets = useSafeAreaInsets();
-  const topPad = Platform.OS === 'web' ? 67 : insets.top;
+  const c = useColors();
   const [selectedStudent, setSelectedStudent] = useState(students[0]?.id);
   const [attempts, setAttempts] = useState<AttemptWithQuiz[]>([]);
   const [loading, setLoading] = useState(true);
   const [quizzes, setQuizzes] = useState<Record<string, Quiz>>({});
 
+  const safeSelectedStudent = students.some(s => s.id === selectedStudent) ? selectedStudent : students[0]?.id;
+
   useEffect(() => {
-    if (!selectedStudent) return;
+    if (!safeSelectedStudent) return;
     (async () => {
       setLoading(true);
       const { data: aData } = await supabase
         .from('quiz_attempts')
         .select('*')
-        .eq('studentId', selectedStudent)
+        .eq('studentId', safeSelectedStudent)
         .order('submittedAt', { ascending: false });
       if (aData) {
         const quizIds = [...new Set((aData as QuizAttempt[]).map(a => a.quizId))];
@@ -50,7 +53,7 @@ export default function QuizHistoryScreen() {
       }
       setLoading(false);
     })();
-  }, [selectedStudent]);
+  }, [safeSelectedStudent]);
 
   const getPct = (score: number, total: number) =>
     total > 0 ? Math.round((score / total) * 100) : 0;
@@ -64,38 +67,24 @@ export default function QuizHistoryScreen() {
   return (
     <AuroraBackground>
       <View style={{ flex: 1 }}>
-        <View style={[styles.header, { paddingTop: topPad + 12 }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Quiz History</Text>
-          <View style={{ width: 36 }} />
-        </View>
+        <TopBar title="Quiz History" />
 
-        <View style={styles.studentRow}>
-          {students.map(s => (
-            <TouchableOpacity
-              key={s.id}
-              style={[styles.studentBtn, selectedStudent === s.id && { borderColor: s.avatarColor, backgroundColor: `${s.avatarColor}22` }]}
-              onPress={() => setSelectedStudent(s.id)}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.studentBtnText, selectedStudent === s.id && { color: s.avatarColor }]}>
-                {s.name.split(' ')[0]}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        {students.length > 1 && (
+          <View style={styles.studentRow}>
+            <ChildrenSelector childrenList={students} selectedId={safeSelectedStudent} onSelect={setSelectedStudent} />
+          </View>
+        )}
 
         {loading ? (
-          <View style={styles.center}><ActivityIndicator size="large" color="#3D5AFE" /></View>
+          <View style={styles.center}><ActivityIndicator size="large" color={c.primary} /></View>
         ) : (
           <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: Platform.OS === 'web' ? 34 : 20 }}>
             {attempts.length === 0 ? (
-              <View style={styles.empty}>
-                <Ionicons name="time-outline" size={48} color="#4A5080" />
-                <Text style={styles.emptyText}>No quiz history yet</Text>
-              </View>
+              <EmptyState
+                icon="time-outline"
+                title="No quiz history yet"
+                message="Completed quizzes appear here."
+              />
             ) : (
               attempts.map(a => {
                 const q = quizzes[a.quizId];
@@ -105,29 +94,29 @@ export default function QuizHistoryScreen() {
                 return (
                   <TouchableOpacity
                     key={a.id}
-                    style={styles.attemptCard}
+                    style={[styles.attemptCard, { backgroundColor: c.card, borderColor: c.border }]}
                     onPress={() => router.push({ pathname: '/quizzes/results', params: { id: a.id } })}
                     activeOpacity={0.8}
                   >
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.attemptTitle}>{title}</Text>
+                      <Text style={[styles.attemptTitle, { color: c.foreground }]}>{title}</Text>
                       <View style={styles.attemptMeta}>
                         <View style={styles.metaItem}>
-                          <Ionicons name="calendar-outline" size={12} color="#8892B0" />
-                          <Text style={styles.metaText}>
+                          <Ionicons name="calendar-outline" size={12} color={c.mutedForeground} />
+                          <Text style={[styles.metaText, { color: c.mutedForeground }]}>
                             {new Date(a.submittedAt || '').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                           </Text>
                         </View>
                         <View style={styles.metaItem}>
-                          <Ionicons name="document-text-outline" size={12} color="#8892B0" />
-                          <Text style={styles.metaText}>{a.totalEarned}/{a.totalPossible}</Text>
+                          <Ionicons name="document-text-outline" size={12} color={c.mutedForeground} />
+                          <Text style={[styles.metaText, { color: c.mutedForeground }]}>{a.totalEarned}/{a.totalPossible}</Text>
                         </View>
                       </View>
                     </View>
                     <View style={[styles.scoreBadge, { backgroundColor: `${color}22` }]}>
                       <Text style={[styles.scoreText, { color }]}>{pct}%</Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color="#8892B0" />
+                    <Ionicons name="chevron-forward" size={18} color={c.mutedForeground} />
                   </TouchableOpacity>
                 );
               })
@@ -141,23 +130,16 @@ export default function QuizHistoryScreen() {
 
 const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 12 },
-  backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: '#FFFFFF' },
-  studentRow: { flexDirection: 'row', paddingHorizontal: 20, gap: 10, marginBottom: 12 },
-  studentBtn: { flex: 1, paddingVertical: 10, borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.1)', alignItems: 'center' },
-  studentBtnText: { fontSize: 14, fontWeight: '700', color: '#8892B0' },
+  studentRow: { paddingHorizontal: 20, marginBottom: 12 },
   attemptCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: 'rgba(20,29,58,0.9)', borderRadius: 16,
-    padding: 16, marginBottom: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
+    borderRadius: 16,
+    padding: 16, marginBottom: 10, borderWidth: 1,
   },
-  attemptTitle: { fontSize: 15, fontWeight: '700', color: '#FFFFFF', marginBottom: 6 },
+  attemptTitle: { fontSize: 15, fontWeight: '700', marginBottom: 6 },
   attemptMeta: { flexDirection: 'row', gap: 14 },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  metaText: { fontSize: 12, color: '#8892B0' },
+  metaText: { fontSize: 12 },
   scoreBadge: { borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6 },
   scoreText: { fontSize: 14, fontWeight: '800' },
-  empty: { alignItems: 'center', paddingVertical: 60, gap: 12 },
-  emptyText: { color: '#4A5080', fontSize: 15 },
 });

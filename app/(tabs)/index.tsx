@@ -1,145 +1,230 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import AuroraBackground from '@/components/AuroraBackground';
+import MarksHud from '@/components/MarksHud';
+import ChildrenSelector from '@/components/ChildrenSelector';
 import { useAuth } from '@/context/AuthContext';
 import { useApp } from '@/context/AppContext';
+import { useScheme } from '@/context/ThemeContext';
+import { useColors } from '@/hooks/useColors';
 
-const QUICK_ACTIONS = [
-  { label: 'Homework', icon: 'book-outline' as const, route: '/homework', color: '#3D5AFE' },
-  { label: 'Attendance', icon: 'calendar-outline' as const, route: '/attendance', color: '#00BCD4' },
-  { label: 'Results', icon: 'bar-chart-outline' as const, route: '/results', color: '#2ECC71' },
-  { label: 'Learning', icon: 'school-outline' as const, route: '/(tabs)/learning', color: '#F59E0B' },
+const REPORT_ACTIONS: { key: string; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { key: 'monthly', label: 'Monthly', icon: 'calendar-outline' },
+  { key: 'midterm', label: 'Midterm', icon: 'layers-outline' },
+  { key: 'final', label: 'Final', icon: 'ribbon-outline' },
 ];
+
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
 
 export default function DashboardScreen() {
   const { user } = useAuth();
-  const { students, announcements, homework, unreadCount } = useApp();
+  const { students, messages, announcements, loading, results } = useApp();
+  const { isDark } = useScheme();
+  const c = useColors();
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = React.useState(false);
+  const [selectedId, setSelectedId] = useState<string | undefined>(students[0]?.id);
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
+  const firstName = user?.name.split(' ')[0] ?? 'Parent';
 
-  const pendingHomework = homework.filter(h => h.status === 'pending').length;
+  // Keep the selection valid as data arrives: single-child parents never see a
+  // selector; multi-child parents keep the first child chosen by default.
+  const safeSelectedId = students.some(s => s.id === selectedId) ? selectedId : students[0]?.id;
+  const selected = students.find(s => s.id === safeSelectedId);
+
+  const unread = useMemo(
+    () => messages.filter(m => m.isInbox && !m.isRead).length,
+    [messages],
+  );
+
+  const childResults = useMemo(
+    () => (selected ? results.filter(r => r.studentId === selected.id) : []),
+    [results, selected],
+  );
+
+  const latestAnnouncements = announcements.slice(0, 4);
 
   const onRefresh = () => {
     setRefreshing(true);
     setTimeout(() => setRefreshing(false), 800);
   };
 
-  const firstName = user?.name.split(' ')[0] ?? 'Parent';
-
   return (
     <AuroraBackground>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: Platform.OS === 'web' ? 34 + 84 : 100 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3D5AFE" />}
+        contentContainerStyle={{ paddingBottom: 120 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.primary} />}
         showsVerticalScrollIndicator={false}
       >
+        {/* Header */}
         <View style={[styles.header, { paddingTop: topPad + 12 }]}>
-          <View>
-            <Text style={styles.greeting}>Good morning,</Text>
-            <Text style={styles.name}>{firstName} 👋</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.greeting, { color: c.mutedForeground }]}>{greeting()},</Text>
+            <Text style={[styles.name, { color: c.foreground }]} numberOfLines={1}>{firstName} 👋</Text>
           </View>
-          <TouchableOpacity style={styles.notifBtn} onPress={() => router.push('/(tabs)/messages')} activeOpacity={0.7}>
-            <Ionicons name="notifications-outline" size={22} color="#FFFFFF" />
-            {unreadCount > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{unreadCount}</Text></View>}
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={[styles.iconBtn, { backgroundColor: c.card, borderColor: c.border }]}
+              onPress={() => router.push('/(tabs)/messages')}
+              activeOpacity={0.7}
+              accessibilityLabel="Messages"
+            >
+              <Ionicons name={unread > 0 ? 'notifications' : 'notifications-outline'} size={20} color={c.foreground} />
+              {unread > 0 && (
+                <View style={[styles.badge, { backgroundColor: c.destructive }]}>
+                  <Text style={styles.badgeText}>{unread > 99 ? '99+' : unread}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.iconBtn, { backgroundColor: c.card, borderColor: c.border }]}
+              onPress={() => router.push('/appearance')}
+              activeOpacity={0.7}
+              accessibilityLabel="Appearance"
+            >
+              <Ionicons name={isDark ? 'moon' : 'sunny'} size={20} color={c.foreground} />
+            </TouchableOpacity>
+          </View>
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.summaryRow}>
-          <SummaryCard label="Pending Homework" value={pendingHomework.toString()} icon="document-text-outline" color="#3D5AFE" />
-          <SummaryCard label="Unread Messages" value={unreadCount.toString()} icon="mail-outline" color="#00BCD4" />
-          <SummaryCard label="Children" value={students.length.toString()} icon="people-outline" color="#2ECC71" />
-        </ScrollView>
+        {/* Children selector */}
+        {students.length > 1 && (
+          <View style={styles.selectorWrap}>
+            <ChildrenSelector
+              childrenList={students}
+              selectedId={safeSelectedId}
+              onSelect={setSelectedId}
+            />
+          </View>
+        )}
 
-        <SectionTitle title="Your Children" />
-        {students.map(student => (
-          <TouchableOpacity key={student.id} style={styles.studentCard} activeOpacity={0.8}>
-            <LinearGradient colors={[student.avatarColor, `${student.avatarColor}88`]} style={styles.studentAvatar} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-              <Text style={styles.studentInitial}>{student.name[0]}</Text>
-            </LinearGradient>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.studentName}>{student.name}</Text>
-              <Text style={styles.studentClass}>{student.className} · {student.grade}</Text>
+        {/* Academic summary */}
+        {loading ? (
+          <View style={styles.skeletonCard}>
+            <View style={[styles.phCard, { backgroundColor: c.card, borderColor: c.border }]} />
+          </View>
+        ) : selected ? (
+          <View style={styles.hudWrap}>
+            <MarksHud
+              studentName={selected.name}
+              className={selected.grade === selected.className ? selected.className : `${selected.className} · ${selected.grade}`}
+              results={childResults}
+            />
+          </View>
+        ) : (
+          <View style={styles.hudWrap}>
+            <View style={[styles.emptyCard, { backgroundColor: c.card, borderColor: c.border }]}>
+              <Ionicons name="person-outline" size={28} color={c.mutedForeground} />
+              <Text style={[styles.emptyTitle, { color: c.foreground }]}>No children on this account yet</Text>
+              <Text style={[styles.emptyNote, { color: c.mutedForeground }]}>
+                Marks and school messages for your children will appear here.
+              </Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color="#8892B0" />
-          </TouchableOpacity>
-        ))}
+          </View>
+        )}
 
-        <SectionTitle title="Quick Access" />
-        <View style={styles.quickGrid}>
-          {QUICK_ACTIONS.map(action => (
-            <TouchableOpacity key={action.label} style={styles.quickBtn} onPress={() => router.push(action.route as any)} activeOpacity={0.8}>
-              <View style={[styles.quickIcon, { backgroundColor: `${action.color}22` }]}>
-                <Ionicons name={action.icon} size={22} color={action.color} />
+        {/* Report actions */}
+        <View style={styles.sectionRow}>
+          <Text style={[styles.sectionTitle, { color: c.foreground }]}>Marks & Reports</Text>
+        </View>
+        <View style={styles.reportRow}>
+          {REPORT_ACTIONS.map(action => (
+            <TouchableOpacity
+              key={action.key}
+              style={[styles.reportBtn, { backgroundColor: c.card, borderColor: c.border }]}
+              onPress={() => router.push({ pathname: '/results', params: { examType: action.key, studentId: safeSelectedId ?? '' } })}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.reportIcon, { backgroundColor: `${c.primary}1F` }]}>
+                <Ionicons name={action.icon} size={22} color={c.primary} />
               </View>
-              <Text style={styles.quickLabel}>{action.label}</Text>
+              <Text style={[styles.reportLabel, { color: c.foreground }]}>{action.label}</Text>
+              <Ionicons name="chevron-forward" size={14} color={c.mutedForeground} />
             </TouchableOpacity>
           ))}
         </View>
 
-        <SectionTitle title="Announcements" />
-        {announcements.slice(0, 3).map(ann => (
-          <View key={ann.id} style={styles.annCard}>
-            <View style={[styles.annDot, { backgroundColor: ann.category === 'urgent' ? '#FF5370' : ann.category === 'event' ? '#3D5AFE' : '#00BCD4' }]} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.annTitle}>{ann.title}</Text>
-              <Text style={styles.annBody} numberOfLines={2}>{ann.body}</Text>
-              <Text style={styles.annDate}>{new Date(ann.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</Text>
+        {/* Announcements */}
+        <View style={[styles.sectionRow, { marginTop: 24 }]}>
+          <Text style={[styles.sectionTitle, { color: c.foreground }]}>
+            Announcements{' '}
+            {unread > 0 && <Text style={{ color: c.destructive }}>• {unread} unread message{unread === 1 ? '' : 's'}</Text>}
+          </Text>
+        </View>
+        {latestAnnouncements.length > 0 ? (
+          <View style={styles.annWrap}>
+            {latestAnnouncements.map(ann => (
+              <TouchableOpacity
+                key={ann.id}
+                style={[styles.annCard, { backgroundColor: c.card, borderColor: c.border }]}
+                onPress={() => router.push('/(tabs)/messages')}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.annDotGap, { backgroundColor: ann.category === 'urgent' ? c.destructive : c.primary }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.annTitle, { color: c.foreground }]} numberOfLines={1}>{ann.title}</Text>
+                  <Text style={[styles.annBody, { color: c.mutedForeground }]} numberOfLines={2}>{ann.body}</Text>
+                  <Text style={[styles.annDate, { color: c.mutedForeground }]}>
+                    {new Date(ann.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : (
+          <View style={styles.annWrap}>
+            <View style={[styles.annCard, { backgroundColor: c.card, borderColor: c.border }]}>
+              <Ionicons name="megaphone-outline" size={18} color={c.mutedForeground} />
+              <Text style={[styles.annEmpty, { color: c.mutedForeground }]}>
+                No announcements yet. Important school notices will appear here.
+              </Text>
             </View>
           </View>
-        ))}
+        )}
       </ScrollView>
     </AuroraBackground>
   );
 }
 
-function SummaryCard({ label, value, icon, color }: { label: string; value: string; icon: any; color: string }) {
-  return (
-    <View style={[styles.summaryCard, { borderColor: `${color}33` }]}>
-      <Ionicons name={icon} size={20} color={color} style={{ marginBottom: 8 }} />
-      <Text style={[styles.summaryValue, { color }]}>{value}</Text>
-      <Text style={styles.summaryLabel}>{label}</Text>
-    </View>
-  );
-}
-
-function SectionTitle({ title }: { title: string }) {
-  return <Text style={styles.sectionTitle}>{title}</Text>;
-}
-
 const styles = StyleSheet.create({
-  header: { paddingHorizontal: 20, paddingBottom: 16, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  greeting: { fontSize: 14, color: '#8892B0' },
-  name: { fontSize: 24, fontWeight: '800', color: '#FFFFFF', marginTop: 2 },
-  notifBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
-  badge: { position: 'absolute', top: 0, right: 0, width: 18, height: 18, borderRadius: 9, backgroundColor: '#FF5370', alignItems: 'center', justifyContent: 'center' },
-  badgeText: { color: '#FFF', fontSize: 10, fontWeight: '700' },
-  summaryRow: { paddingHorizontal: 20, gap: 12, paddingBottom: 4 },
-  summaryCard: { backgroundColor: 'rgba(20,29,58,0.9)', borderRadius: 16, padding: 16, width: 130, borderWidth: 1 },
-  summaryValue: { fontSize: 26, fontWeight: '800' },
-  summaryLabel: { fontSize: 11, color: '#8892B0', marginTop: 2 },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#FFFFFF', paddingHorizontal: 20, marginTop: 24, marginBottom: 12 },
-  studentCard: { marginHorizontal: 20, marginBottom: 10, backgroundColor: 'rgba(20,29,58,0.9)', borderRadius: 18, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
-  studentAvatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  studentInitial: { color: '#FFFFFF', fontSize: 20, fontWeight: '800' },
-  studentName: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
-  studentClass: { fontSize: 13, color: '#8892B0', marginTop: 2 },
-  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 20, gap: 12 },
-  quickBtn: { width: '47%', backgroundColor: 'rgba(20,29,58,0.9)', borderRadius: 16, padding: 16, alignItems: 'flex-start', gap: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
-  quickIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  quickLabel: { fontSize: 14, fontWeight: '600', color: '#FFFFFF' },
-  annCard: { marginHorizontal: 20, marginBottom: 10, backgroundColor: 'rgba(20,29,58,0.9)', borderRadius: 16, padding: 16, flexDirection: 'row', gap: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
-  annDot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
-  annTitle: { fontSize: 14, fontWeight: '700', color: '#FFFFFF', marginBottom: 4 },
-  annBody: { fontSize: 13, color: '#8892B0', lineHeight: 18 },
-  annDate: { fontSize: 11, color: '#4A5080', marginTop: 6 },
+  header: { paddingHorizontal: 20, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  headerActions: { flexDirection: 'row', gap: 8 },
+  greeting: { fontSize: 14 },
+  name: { fontSize: 24, fontWeight: '800', marginTop: 2 },
+  iconBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  badge: { position: 'absolute', top: -2, right: -2, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center' },
+  badgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
+  selectorWrap: { paddingHorizontal: 20, marginBottom: 16 },
+  hudWrap: { paddingHorizontal: 20, marginBottom: 20 },
+  skeletonCard: { paddingHorizontal: 20, marginBottom: 20 },
+  phCard: { height: 210, borderRadius: 20, borderWidth: 1 },
+  emptyCard: { borderRadius: 20, borderWidth: 1, padding: 24, alignItems: 'center', gap: 8 },
+  emptyTitle: { fontSize: 16, fontWeight: '700' },
+  emptyNote: { fontSize: 13, textAlign: 'center', lineHeight: 18 },
+  sectionRow: { paddingHorizontal: 20, marginBottom: 10 },
+  sectionTitle: { fontSize: 16, fontWeight: '800' },
+  reportRow: { flexDirection: 'row', paddingHorizontal: 20, gap: 10 },
+  reportBtn: { flex: 1, borderRadius: 16, borderWidth: 1, padding: 14, gap: 8 },
+  reportIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  reportLabel: { fontSize: 13, fontWeight: '700' },
+  annWrap: { paddingHorizontal: 20, gap: 10 },
+  annCard: { borderRadius: 16, borderWidth: 1, padding: 14, flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
+  annDotGap: { width: 8, height: 8, borderRadius: 4, marginTop: 5 },
+  annTitle: { fontSize: 14, fontWeight: '700', marginBottom: 3 },
+  annBody: { fontSize: 13, lineHeight: 18 },
+  annDate: { fontSize: 11, marginTop: 6 },
+  annEmpty: { fontSize: 13, flex: 1 },
 });

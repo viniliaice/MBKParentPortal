@@ -8,10 +8,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as Speech from 'expo-speech';
 import AuroraBackground from '@/components/AuroraBackground';
+import { useColors } from '@/hooks/useColors';
 import { supabase, type QuizAttempt, type Quiz, type QuizQuestion, type QuizAnswer } from '@/lib/supabase';
 
 export default function QuizResultsScreen() {
   const { id: attemptId } = useLocalSearchParams<{ id: string }>();
+  const c = useColors();
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
 
@@ -74,7 +76,7 @@ export default function QuizResultsScreen() {
   if (loading) {
     return (
       <AuroraBackground>
-        <View style={styles.center}><ActivityIndicator size="large" color="#3D5AFE" /></View>
+        <View style={styles.center}><ActivityIndicator size="large" color={c.primary} /></View>
       </AuroraBackground>
     );
   }
@@ -83,10 +85,10 @@ export default function QuizResultsScreen() {
     return (
       <AuroraBackground>
         <View style={styles.center}>
-          <Ionicons name="alert-circle-outline" size={36} color="#4A5080" />
-          <Text style={{ color: '#8892B0', marginTop: 12 }}>Attempt not found</Text>
+          <Ionicons name="alert-circle-outline" size={36} color={c.mutedForeground} />
+          <Text style={{ color: c.mutedForeground, marginTop: 12 }}>Attempt not found</Text>
           <TouchableOpacity style={styles.backHomeBtn} onPress={() => router.back()}>
-            <Text style={{ color: '#3D5AFE', fontWeight: '600' }}>Go Back</Text>
+            <Text style={{ color: c.primary, fontWeight: '600' }}>Go Back</Text>
           </TouchableOpacity>
         </View>
       </AuroraBackground>
@@ -110,18 +112,18 @@ export default function QuizResultsScreen() {
       <AuroraBackground>
         <View style={{ flex: 1 }}>
           <View style={[styles.header, { paddingTop: topPad + 12 }]}>
-            <TouchableOpacity onPress={() => router.dismissAll()} style={styles.backBtn}>
-              <Ionicons name="close" size={22} color="#FFFFFF" />
+            <TouchableOpacity onPress={() => router.dismissAll()} style={[styles.backBtn, { backgroundColor: c.card, borderColor: c.border }]}>
+              <Ionicons name="close" size={22} color={c.foreground} />
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Quiz Submitted</Text>
+            <Text style={[styles.headerTitle, { color: c.foreground }]}>Quiz Submitted</Text>
             <View style={{ width: 36 }} />
           </View>
           <View style={styles.center}>
             <Ionicons name="checkmark-circle" size={64} color="#2ECC71" />
-            <Text style={styles.submittedTitle}>Submitted!</Text>
-            <Text style={styles.submittedSub}>Your quiz has been submitted successfully. Results will be available once graded.</Text>
-            <TouchableOpacity style={styles.returnBtn} onPress={() => router.navigate('/quizzes')}>
-              <Text style={styles.returnBtnText}>Return to Quizzes</Text>
+            <Text style={[styles.submittedTitle, { color: c.foreground }]}>Submitted!</Text>
+            <Text style={[styles.submittedSub, { color: c.mutedForeground }]}>Your quiz has been submitted successfully. Results will be available once graded.</Text>
+            <TouchableOpacity style={[styles.returnBtn, { backgroundColor: `${c.primary}26` }]} onPress={() => router.navigate('/quizzes')}>
+              <Text style={[styles.returnBtnText, { color: c.primary }]}>Return to Quizzes</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -133,28 +135,23 @@ export default function QuizResultsScreen() {
     <AuroraBackground>
       <View style={{ flex: 1 }}>
         <View style={[styles.header, { paddingTop: topPad + 12 }]}>
-          <TouchableOpacity onPress={() => router.dismissAll()} style={styles.backBtn}>
-            <Ionicons name="close" size={22} color="#FFFFFF" />
+          <TouchableOpacity onPress={() => router.dismissAll()} style={[styles.backBtn, { backgroundColor: c.card, borderColor: c.border }]}>
+            <Ionicons name="close" size={22} color={c.foreground} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle} numberOfLines={1}>Results</Text>
+          <Text style={[styles.headerTitle, { color: c.foreground }]} numberOfLines={1}>Results</Text>
           <View style={{ width: 36 }} />
         </View>
 
         <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: Platform.OS === 'web' ? 34 : 20 }}>
-          <LinearGradient
-            colors={[gradeColor, `${gradeColor}88`]}
-            style={styles.scoreCard}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <Text style={styles.scoreLabel}>{quiz.title}</Text>
+          <View style={[styles.scoreCard, { backgroundColor: c.card, borderColor: c.border }]}>
+            <Text style={[styles.scoreLabel, { color: c.mutedForeground }]}>{quiz.title}</Text>
             <Text style={[styles.scoreValue, { color: gradeColor }]}>{pct}%</Text>
-            <Text style={styles.scoreDetail}>
+            <Text style={[styles.scoreDetail, { color: c.mutedForeground }]}>
               {attempt.totalEarned} / {attempt.totalPossible} points
             </Text>
-          </LinearGradient>
+          </View>
 
-          <Text style={styles.sectionTitle}>Question Review</Text>
+          <Text style={[styles.sectionTitle, { color: c.mutedForeground }]}>Question Review</Text>
 
           {questions.map((q, i) => {
             const answersData: QuizAnswer[] = Array.isArray(attempt.answers) ? attempt.answers : [];
@@ -164,7 +161,7 @@ export default function QuizResultsScreen() {
             const isWrong = ans?.isCorrect === false;
             const pending = ans?.isCorrect === null;
 
-            let statusColor = '#8892B0';
+            let statusColor = c.mutedForeground;
             let statusIcon: keyof typeof Ionicons.glyphMap = 'remove-outline';
             let statusLabel = 'Not answered';
             if (isCorrect) { statusColor = '#2ECC71'; statusIcon = 'checkmark-circle'; statusLabel = 'Correct'; }
@@ -172,25 +169,25 @@ export default function QuizResultsScreen() {
             else if (pending) { statusColor = '#F59E0B'; statusIcon = 'time-outline'; statusLabel = 'Pending'; }
 
             return (
-              <View key={q.id} style={styles.reviewCard}>
+              <View key={q.id} style={[styles.reviewCard, { backgroundColor: c.card, borderColor: c.border }]}>
                 <View style={styles.reviewHeader}>
-                  <Text style={styles.reviewNum}>Question {i + 1}</Text>
+                  <Text style={[styles.reviewNum, { color: c.mutedForeground }]}>Question {i + 1}</Text>
                   <View style={[styles.statusPill, { backgroundColor: `${statusColor}22` }]}>
                     <Ionicons name={statusIcon} size={12} color={statusColor} />
                     <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
                   </View>
                 </View>
                 <View style={styles.promptRow}>
-                  <Text style={styles.reviewPrompt}>{q.promptSnapshot}</Text>
+                  <Text style={[styles.reviewPrompt, { color: c.foreground }]}>{q.promptSnapshot}</Text>
                   <TouchableOpacity
-                    style={[styles.speakBtn, speakingId === q.id && styles.speakBtnActive]}
+                    style={[styles.speakBtn, { backgroundColor: c.muted }, speakingId === q.id && { backgroundColor: c.primary }]}
                     onPress={() => speakQuestion(q.id, q.promptSnapshot)}
                     activeOpacity={0.7}
                   >
                     <Ionicons
                       name={speakingId === q.id ? 'volume-high' : 'volume-medium-outline'}
                       size={16}
-                      color={speakingId === q.id ? '#FFFFFF' : '#8892B0'}
+                      color={speakingId === q.id ? '#FFFFFF' : c.mutedForeground}
                     />
                   </TouchableOpacity>
                 </View>
@@ -205,13 +202,14 @@ export default function QuizResultsScreen() {
                           key={oi}
                           style={[
                             styles.reviewOption,
-                            wasSelected && isCorrect && styles.reviewOptionCorrect,
-                            wasSelected && isWrong && styles.reviewOptionWrong,
-                            !wasSelected && isCorrectOpt && styles.reviewOptionCorrect,
+                            { backgroundColor: c.muted },
+                            wasSelected && isCorrect && { backgroundColor: 'rgba(46,204,113,0.12)' },
+                            wasSelected && isWrong && { backgroundColor: 'rgba(255,83,112,0.12)' },
+                            !wasSelected && isCorrectOpt && { backgroundColor: 'rgba(46,204,113,0.12)' },
                           ]}
                         >
-                          <Text style={styles.reviewOptionLabel}>{opt.label}.</Text>
-                          <Text style={[styles.reviewOptionText, (wasSelected || isCorrectOpt) && { color: '#FFFFFF' }]}>{opt.text}</Text>
+                          <Text style={[styles.reviewOptionLabel, { color: c.mutedForeground }]}>{opt.label}.</Text>
+                          <Text style={[styles.reviewOptionText, { color: (wasSelected || isCorrectOpt) ? c.foreground : c.mutedForeground }]}>{opt.text}</Text>
                           {wasSelected && (
                             <Ionicons
                               name={isCorrect ? 'checkmark-circle' : 'close-circle'}
@@ -229,7 +227,7 @@ export default function QuizResultsScreen() {
                 )}
 
                 {pending && (
-                  <View style={styles.pendingBox}>
+                  <View style={[styles.pendingBox, { backgroundColor: 'rgba(245,158,11,0.08)' }]}>
                     <Ionicons name="time-outline" size={16} color="#F59E0B" />
                     <Text style={styles.pendingText}>Pending teacher grading</Text>
                   </View>
@@ -242,8 +240,8 @@ export default function QuizResultsScreen() {
             );
           })}
 
-          <TouchableOpacity style={styles.returnBtn} onPress={() => router.navigate('/quizzes')}>
-            <Text style={styles.returnBtnText}>Back to Quizzes</Text>
+          <TouchableOpacity style={[styles.returnBtn, { backgroundColor: `${c.primary}26` }]} onPress={() => router.navigate('/quizzes')}>
+            <Text style={[styles.returnBtnText, { color: c.primary }]}>Back to Quizzes</Text>
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -254,34 +252,31 @@ export default function QuizResultsScreen() {
 const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 12 },
-  backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 18, fontWeight: '800', color: '#FFFFFF' },
-  scoreCard: { borderRadius: 24, padding: 32, alignItems: 'center', marginBottom: 24 },
-  scoreLabel: { fontSize: 14, color: 'rgba(255,255,255,0.7)', marginBottom: 8 },
+  backBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  headerTitle: { fontSize: 18, fontWeight: '800' },
+  scoreCard: { borderRadius: 24, padding: 32, alignItems: 'center', marginBottom: 24, borderWidth: 1 },
+  scoreLabel: { fontSize: 14, marginBottom: 8 },
   scoreValue: { fontSize: 56, fontWeight: '900', marginBottom: 4 },
-  scoreDetail: { fontSize: 15, color: 'rgba(255,255,255,0.8)', fontWeight: '600' },
-  sectionTitle: { fontSize: 14, fontWeight: '700', color: '#8892B0', marginBottom: 12, letterSpacing: 0.5 },
-  reviewCard: { backgroundColor: 'rgba(20,29,58,0.9)', borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
+  scoreDetail: { fontSize: 15, fontWeight: '600' },
+  sectionTitle: { fontSize: 14, fontWeight: '700', marginBottom: 12, letterSpacing: 0.5 },
+  reviewCard: { borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 1 },
   reviewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  reviewNum: { fontSize: 11, fontWeight: '700', color: '#8892B0', letterSpacing: 0.5 },
+  reviewNum: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3 },
   statusText: { fontSize: 11, fontWeight: '700' },
   promptRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 12 },
-  reviewPrompt: { flex: 1, fontSize: 15, fontWeight: '600', color: '#FFFFFF', lineHeight: 22 },
-  speakBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center', marginTop: -2 },
-  speakBtnActive: { backgroundColor: '#3D5AFE' },
+  reviewPrompt: { flex: 1, fontSize: 15, fontWeight: '600', lineHeight: 22 },
+  speakBtn: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginTop: -2 },
   reviewOptions: { gap: 8 },
-  reviewOption: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.04)' },
-  reviewOptionCorrect: { backgroundColor: 'rgba(46,204,113,0.12)' },
-  reviewOptionWrong: { backgroundColor: 'rgba(255,83,112,0.12)' },
-  reviewOptionLabel: { fontSize: 12, fontWeight: '700', color: '#8892B0' },
-  reviewOptionText: { flex: 1, fontSize: 13, color: '#AAAFCO' },
-  pendingBox: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12, backgroundColor: 'rgba(245,158,11,0.08)' },
+  reviewOption: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12 },
+  reviewOptionLabel: { fontSize: 12, fontWeight: '700' },
+  reviewOptionText: { flex: 1, fontSize: 13 },
+  pendingBox: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12 },
   pendingText: { fontSize: 13, color: '#F59E0B', fontWeight: '600' },
   scoreEarned: { fontSize: 13, fontWeight: '700', color: '#2ECC71', marginTop: 8 },
-  submittedTitle: { fontSize: 24, fontWeight: '800', color: '#FFFFFF', marginTop: 16 },
-  submittedSub: { fontSize: 15, color: '#8892B0', textAlign: 'center', lineHeight: 22, paddingHorizontal: 40, marginBottom: 24 },
-  returnBtn: { marginTop: 16, paddingVertical: 16, borderRadius: 16, backgroundColor: 'rgba(61,90,254,0.15)', alignItems: 'center' },
-  returnBtnText: { color: '#3D5AFE', fontSize: 15, fontWeight: '700' },
+  submittedTitle: { fontSize: 24, fontWeight: '800', marginTop: 16 },
+  submittedSub: { fontSize: 15, textAlign: 'center', lineHeight: 22, paddingHorizontal: 40, marginBottom: 24 },
+  returnBtn: { marginTop: 16, paddingVertical: 16, borderRadius: 16, alignItems: 'center' },
+  returnBtnText: { fontSize: 15, fontWeight: '700' },
   backHomeBtn: { marginTop: 16, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12, backgroundColor: 'rgba(61,90,254,0.15)' },
 });

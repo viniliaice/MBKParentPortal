@@ -1,14 +1,16 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Animated, RefreshControl } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import AuroraBackground from '@/components/AuroraBackground';
+import ChildrenSelector from '@/components/ChildrenSelector';
+import TopBar from '@/components/TopBar';
 import { useApp } from '@/context/AppContext';
 import { supabase, type SupabaseAcademicYear } from '@/lib/supabase';
 import { getGrade, getGradeColor } from '@/data/mockData';
+import { useColors } from '@/hooks/useColors';
 
 const EXAM_TABS: { key: string; label: string }[] = [
   { key: 'monthly', label: 'Monthly' },
@@ -37,6 +39,7 @@ function getMonthIndex(dateStr: string): number {
 }
 
 function LoadingSkeleton() {
+  const c = useColors();
   const fadeAnim = useRef(new Animated.Value(0.3)).current;
 
   useEffect(() => {
@@ -50,16 +53,18 @@ function LoadingSkeleton() {
     return () => anim.stop();
   }, [fadeAnim]);
 
-  const BGO = 'rgba(255,255,255,0.06)';
+  const BGO = c.border;
 
   return (
     <Animated.View style={{ padding: 20, opacity: fadeAnim }}>
-      <View style={{ height: 120, borderRadius: 20, backgroundColor: BGO }} />
+      <View style={[styles.resultCard, { borderColor: c.border }]}>
+        <View style={{ height: 120, borderRadius: 20, backgroundColor: BGO }} />
+      </View>
       <View style={{ height: 12 }} />
       <View style={{ height: 16, width: 120, borderRadius: 4, backgroundColor: BGO }} />
       <View style={{ height: 12 }} />
       {[1, 2, 3].map(i => (
-        <View key={i} style={styles.resultCard}>
+        <View key={i} style={[styles.resultCard, { borderColor: c.border }]}>
           <View style={{ height: 16, width: '60%', borderRadius: 4, backgroundColor: BGO }} />
           <View style={{ height: 8 }} />
           <View style={{ height: 6, borderRadius: 3, backgroundColor: BGO }} />
@@ -76,10 +81,10 @@ function LoadingSkeleton() {
 
 export default function ResultsScreen() {
   const { results, students, loading } = useApp();
-  const insets = useSafeAreaInsets();
-  const [selectedStudent, setSelectedStudent] = useState(students[0]?.id);
-  const [activeTab, setActiveTab] = useState('monthly');
-  const topPad = Platform.OS === 'web' ? 67 : insets.top;
+  const c = useColors();
+  const params = useLocalSearchParams<{ examType?: string; studentId?: string }>();
+  const [selectedStudent, setSelectedStudent] = useState(params.studentId || students[0]?.id);
+  const [activeTab, setActiveTab] = useState<string>(params.examType === 'midterm' || params.examType === 'final' ? params.examType : 'monthly');
 
   const [academicYearRows, setAcademicYearRows] = useState<SupabaseAcademicYear[]>([]);
 
@@ -88,6 +93,9 @@ export default function ResultsScreen() {
       if (data) setAcademicYearRows(data as SupabaseAcademicYear[]);
     });
   }, []);
+
+  // Keep the selected child valid as data arrives.
+  const safeSelectedStudent = students.some(s => s.id === selectedStudent) ? selectedStudent : students[0]?.id;
 
   function yearNameToKey(name: string): string {
     return name.replace('/', '-');
@@ -99,8 +107,8 @@ export default function ResultsScreen() {
   }, [academicYearRows]);
 
   const studentResults = useMemo(
-    () => results.filter(r => r.studentId === selectedStudent),
-    [results, selectedStudent],
+    () => results.filter(r => r.studentId === safeSelectedStudent),
+    [results, safeSelectedStudent],
   );
 
   const academicYears = useMemo(() => {
@@ -228,17 +236,11 @@ export default function ResultsScreen() {
     return (
       <AuroraBackground>
         <View style={{ flex: 1 }}>
-          <View style={[styles.header, { paddingTop: topPad + 12 }]}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-              <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>Academic Results</Text>
-            <View style={{ width: 36 }} />
-          </View>
+          <TopBar title="Academic Results" />
           <View style={styles.empty}>
-            <Ionicons name="alert-circle-outline" size={48} color="#4A5080" />
-            <Text style={styles.emptyText}>Unable to load student data.</Text>
-            <Text style={{ color: '#4A5080', fontSize: 13, textAlign: 'center', marginTop: 4 }}>Please check your connection and try again.</Text>
+            <Ionicons name="alert-circle-outline" size={48} color={c.mutedForeground} />
+            <Text style={[styles.emptyText, { color: c.mutedForeground }]}>Unable to load student data.</Text>
+            <Text style={{ color: c.mutedForeground, fontSize: 13, textAlign: 'center', marginTop: 4 }}>Please check your connection and try again.</Text>
           </View>
         </View>
       </AuroraBackground>
@@ -248,27 +250,12 @@ export default function ResultsScreen() {
   return (
     <AuroraBackground>
       <View style={{ flex: 1 }}>
-        <View style={[styles.header, { paddingTop: topPad + 12 }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Academic Results</Text>
-          <View style={{ width: 36 }} />
-        </View>
+        <TopBar title="Academic Results" />
 
         <View style={styles.studentRow}>
-          {students.map(s => (
-            <TouchableOpacity
-              key={s.id}
-              style={[styles.studentBtn, selectedStudent === s.id && { borderColor: s.avatarColor, backgroundColor: `${s.avatarColor}22` }]}
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSelectedStudent(s.id); }}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.studentBtnText, selectedStudent === s.id && { color: s.avatarColor }]}>
-                {s.name}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          {students.length > 1 ? (
+            <ChildrenSelector childrenList={students} selectedId={safeSelectedStudent} onSelect={id => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSelectedStudent(id); setSelectedMonth(''); }} />
+          ) : null}
         </View>
 
         {loading ? (
@@ -280,17 +267,17 @@ export default function ResultsScreen() {
             <TouchableOpacity
               onPress={() => { if (prevYear) { setSelectedYear(prevYear); setSelectedMonth(''); } }}
               disabled={!prevYear}
-              style={[styles.yearArrow, !prevYear && { opacity: 0.3 }]}
+              style={[styles.yearArrow, { backgroundColor: c.card, borderColor: c.border }, !prevYear && { opacity: 0.3 }]}
             >
-              <Ionicons name="chevron-back" size={18} color="#FFFFFF" />
+              <Ionicons name="chevron-back" size={18} color={c.foreground} />
             </TouchableOpacity>
-            <Text style={styles.yearLabel}>{selectedYear || academicYears[academicYears.length - 1]}</Text>
+            <Text style={[styles.yearLabel, { color: c.foreground }]}>{selectedYear || academicYears[academicYears.length - 1]}</Text>
             <TouchableOpacity
               onPress={() => { if (nextYear) { setSelectedYear(nextYear); setSelectedMonth(''); } }}
               disabled={!nextYear}
-              style={[styles.yearArrow, !nextYear && { opacity: 0.3 }]}
+              style={[styles.yearArrow, { backgroundColor: c.card, borderColor: c.border }, !nextYear && { opacity: 0.3 }]}
             >
-              <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
+              <Ionicons name="chevron-forward" size={18} color={c.foreground} />
             </TouchableOpacity>
           </View>
         )}
@@ -303,16 +290,16 @@ export default function ResultsScreen() {
               return (
                 <TouchableOpacity
                   key={tab.key}
-                  style={[styles.tab, isActive && styles.tabActive]}
+                  style={[styles.tab, { backgroundColor: c.card, borderColor: isActive ? c.primary : c.border }, isActive && { backgroundColor: `${c.primary}26` }]}
                   onPress={() => { setActiveTab(tab.key); setSelectedMonth(''); }}
                   activeOpacity={0.7}
                 >
-                  <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
+                  <Text style={[styles.tabLabel, { color: isActive ? c.foreground : c.mutedForeground }]}>
                     {tab.label}
                   </Text>
                   {count > 0 && (
-                    <View style={[styles.tabBadge, isActive && styles.tabBadgeActive]}>
-                      <Text style={[styles.tabBadgeText, isActive && styles.tabBadgeTextActive]}>
+                    <View style={[styles.tabBadge, { backgroundColor: isActive ? `${c.primary}40` : c.muted }]}>
+                      <Text style={[styles.tabBadgeText, { color: isActive ? c.foreground : c.mutedForeground }]}>
                         {count}
                       </Text>
                     </View>
@@ -334,7 +321,7 @@ export default function ResultsScreen() {
                     key={m}
                     style={[
                       styles.monthBtn,
-                      styles.monthBtnHasData,
+                      { backgroundColor: isSelected ? `${c.primary}26` : c.card, borderColor: isSelected ? c.primary : c.border },
                       isSelected && styles.monthBtnActive,
                     ]}
                     onPress={() => {
@@ -343,13 +330,9 @@ export default function ResultsScreen() {
                     }}
                     activeOpacity={0.7}
                   >
-                    <Text style={[
-                      styles.monthLabel,
-                      styles.monthLabelHasData,
-                      isSelected && styles.monthLabelActive,
-                    ]}>{m}</Text>
-                    <View style={styles.monthBadge}>
-                      <Text style={styles.monthBadgeText}>{count}</Text>
+                    <Text style={[styles.monthLabel, { color: isSelected ? c.foreground : c.mutedForeground }]}>{m}</Text>
+                    <View style={[styles.monthBadge, { backgroundColor: `${c.primary}33` }]}>
+                      <Text style={[styles.monthBadgeText, { color: c.primary }]}>{count}</Text>
                     </View>
                   </TouchableOpacity>
                 );
@@ -360,17 +343,17 @@ export default function ResultsScreen() {
 
         <ScrollView
           contentContainerStyle={{ padding: 20, paddingBottom: Platform.OS === 'web' ? 34 : 20 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#8892B0" />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.mutedForeground} />}
         >
           {displayAvg > 0 && (
-            <LinearGradient colors={['#3D5AFE', '#00BCD4']} style={styles.avgCard} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+            <LinearGradient colors={[c.primary, c.secondary]} style={styles.avgCard} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
               <Text style={styles.avgLabel}>Average Score</Text>
               <Text style={styles.avgValue}>{displayAvg}%</Text>
               <Text style={styles.avgGrade}>{getGrade(displayAvg, 100)}</Text>
             </LinearGradient>
           )}
 
-          <Text style={styles.sectionTitle}>
+          <Text style={[styles.sectionTitle, { color: c.mutedForeground }]}>
             {displayResults.length > 0
               ? `${EXAM_TABS.find(t => t.key === activeTab)?.label} Results`
               : `No ${activeTab} results`}
@@ -381,41 +364,41 @@ export default function ResultsScreen() {
             const color = getGradeColor(result.score, result.total);
             const monthLabel = getMonthLabel(result.date, result.month);
             return (
-              <View key={result.id} style={styles.resultCard}>
+              <View key={result.id} style={[styles.resultCard, { backgroundColor: c.card, borderColor: c.border }]}>
                 <View style={{ flex: 1 }}>
                   <View style={styles.resultHeader}>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.resultSubject}>{result.subject}</Text>
+                      <Text style={[styles.resultSubject, { color: c.foreground }]}>{result.subject}</Text>
                       {monthLabel !== '' && (
-                        <Text style={styles.resultMonth}>{monthLabel}</Text>
+                        <Text style={[styles.resultMonth, { color: c.mutedForeground }]}>{monthLabel}</Text>
                       )}
                     </View>
                     <View style={[styles.gradePill, { backgroundColor: `${color}22` }]}>
                       <Text style={[styles.gradeText, { color }]}>{getGrade(result.score, result.total)}</Text>
                     </View>
                   </View>
-                  <View style={styles.progressTrack}>
+                  <View style={[styles.progressTrack, { backgroundColor: c.border }]}>
                     <View style={[styles.progressFill, { width: pctStr(pct), backgroundColor: color }]} />
                   </View>
                   <View style={styles.resultMeta}>
-                    <Text style={styles.resultScore}>{result.score}/{result.total}</Text>
+                    <Text style={[styles.resultScore, { color: c.mutedForeground }]}>{result.score}/{result.total}</Text>
                     <Text style={[styles.resultPct, { color }]}>{pct}%</Text>
                   </View>
                   {result.components && result.components.length > 0 && (
-                    <View style={styles.breakdown}>
+                    <View style={[styles.breakdown, { borderTopColor: c.border }]}>
                       {result.components.map((comp, ci) => {
                         const compColor = getGradeColor(comp.score, comp.total);
                         return (
                           <View key={ci} style={styles.compRow}>
                             <View style={{ flex: 1 }}>
-                              <Text style={styles.compName} numberOfLines={1}>{comp.name}</Text>
-                              <View style={styles.compBarTrack}>
+                              <Text style={[styles.compName, { color: c.mutedForeground }]} numberOfLines={1}>{comp.name}</Text>
+                              <View style={[styles.compBarTrack, { backgroundColor: c.border }]}>
                                 <View style={[styles.compBarFill, { width: pctStr(Math.round((comp.score / comp.total) * 100)), backgroundColor: compColor }]} />
                               </View>
                             </View>
                             <View style={styles.compMeta}>
-                              <Text style={styles.compPct}>{Math.round((comp.score / comp.total) * 100)}%</Text>
-                              <Text style={styles.compWeight}>×{comp.weight}%</Text>
+                              <Text style={[styles.compPct, { color: c.foreground }]}>{Math.round((comp.score / comp.total) * 100)}%</Text>
+                              <Text style={[styles.compWeight, { color: c.mutedForeground }]}>×{comp.weight}%</Text>
                             </View>
                           </View>
                         );
@@ -426,10 +409,11 @@ export default function ResultsScreen() {
               </View>
             );
           })}
+
           {displayResults.length === 0 && (
             <View style={styles.empty}>
-              <Ionicons name="document-outline" size={48} color="#4A5080" />
-              <Text style={styles.emptyText}>
+              <Ionicons name="document-outline" size={48} color={c.mutedForeground} />
+              <Text style={[styles.emptyText, { color: c.mutedForeground }]}>
                 {activeTab === 'monthly' && !selectedMonth
                   ? 'Select a month above to view results'
                   : activeTab === 'monthly' && selectedMonth
@@ -437,7 +421,7 @@ export default function ResultsScreen() {
                     : `No ${EXAM_TABS.find(t => t.key === activeTab)?.label.toLowerCase()} results${selectedYear ? ` for ${selectedYear}` : ''}`
                 }
               </Text>
-              <Text style={{ color: '#4A5080', fontSize: 13, textAlign: 'center', marginTop: 4, paddingHorizontal: 40 }}>
+              <Text style={{ color: c.mutedForeground, fontSize: 13, textAlign: 'center', marginTop: 4, paddingHorizontal: 40 }}>
                 Results appear here once exams are graded and published by teachers.
               </Text>
             </View>
@@ -451,60 +435,47 @@ export default function ResultsScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 12 },
-  backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: '#FFFFFF' },
-  studentRow: { flexDirection: 'row', paddingHorizontal: 20, gap: 10, marginBottom: 4 },
-  studentBtn: { flex: 1, paddingVertical: 10, borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.1)', alignItems: 'center' },
-  studentBtnText: { fontSize: 14, fontWeight: '700', color: '#8892B0' },
+  studentRow: { paddingHorizontal: 20, marginBottom: 8 },
   yearRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, paddingVertical: 8, paddingHorizontal: 20 },
-  yearArrow: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
-  yearLabel: { fontSize: 15, fontWeight: '700', color: '#FFFFFF', minWidth: 90, textAlign: 'center' },
+  yearArrow: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  yearLabel: { fontSize: 15, fontWeight: '700', minWidth: 90, textAlign: 'center' },
   tabRow: { marginBottom: 8 },
   tabScroll: { paddingHorizontal: 20, gap: 8 },
-  tab: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, backgroundColor: 'rgba(20,29,58,0.9)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)', gap: 6 },
-  tabActive: { backgroundColor: 'rgba(61,90,254,0.15)', borderColor: '#3D5AFE' },
-  tabLabel: { fontSize: 13, fontWeight: '600', color: '#8892B0' },
-  tabLabelActive: { color: '#FFFFFF' },
-  tabBadge: { borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.06)', paddingHorizontal: 7, paddingVertical: 2 },
-  tabBadgeActive: { backgroundColor: 'rgba(61,90,254,0.25)' },
-  tabBadgeText: { fontSize: 11, fontWeight: '700', color: '#8892B0' },
-  tabBadgeTextActive: { color: '#3D5AFE' },
+  tab: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1, gap: 6 },
+  tabLabel: { fontSize: 13, fontWeight: '600' },
+  tabBadge: { borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 },
+  tabBadgeText: { fontSize: 11, fontWeight: '700' },
   monthRow: { marginBottom: 12 },
   monthScroll: { paddingHorizontal: 20, gap: 8 },
-  monthBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 12, borderRadius: 14, backgroundColor: 'rgba(20,29,58,0.5)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', gap: 6 },
-  monthBtnHasData: { backgroundColor: 'rgba(20,29,58,0.9)', borderColor: 'rgba(255,255,255,0.1)' },
-  monthBtnActive: { backgroundColor: 'rgba(61,90,254,0.15)', borderColor: '#3D5AFE' },
-  monthLabel: { fontSize: 14, fontWeight: '600', color: '#4A5080' },
-  monthLabelHasData: { color: '#CCCCDD' },
-  monthLabelActive: { color: '#FFFFFF' },
-  monthLabelDim: { color: '#2A2F50', fontSize: 13 },
-  monthBadge: { borderRadius: 8, backgroundColor: 'rgba(61,90,254,0.2)', paddingHorizontal: 8, paddingVertical: 2 },
-  monthBadgeText: { fontSize: 11, fontWeight: '700', color: '#3D5AFE' },
+  monthBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 12, borderRadius: 14, borderWidth: 1, gap: 6 },
+  monthBtnActive: {},
+  monthLabel: { fontSize: 14, fontWeight: '600' },
+  monthBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 },
+  monthBadgeText: { fontSize: 11, fontWeight: '700' },
   avgCard: { borderRadius: 20, padding: 24, alignItems: 'center', marginBottom: 20 },
   avgLabel: { fontSize: 13, color: 'rgba(255,255,255,0.7)', marginBottom: 8 },
   avgValue: { fontSize: 48, fontWeight: '900', color: '#FFFFFF' },
   avgGrade: { fontSize: 18, color: 'rgba(255,255,255,0.8)', marginTop: 4 },
-  sectionTitle: { fontSize: 14, fontWeight: '700', color: '#8892B0', marginBottom: 12, letterSpacing: 0.5 },
-  resultCard: { backgroundColor: 'rgba(20,29,58,0.9)', borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
+  sectionTitle: { fontSize: 14, fontWeight: '700', marginBottom: 12, letterSpacing: 0.5 },
+  resultCard: { borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 1 },
   resultHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
-  resultSubject: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
-  resultMonth: { fontSize: 11, color: '#4A5080', marginTop: 2 },
+  resultSubject: { fontSize: 15, fontWeight: '700' },
+  resultMonth: { fontSize: 11, marginTop: 2 },
   gradePill: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
   gradeText: { fontSize: 13, fontWeight: '800' },
-  progressTrack: { height: 6, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 3, marginBottom: 8 },
+  progressTrack: { height: 6, borderRadius: 3, marginBottom: 8 },
   progressFill: { height: 6, borderRadius: 3 },
   resultMeta: { flexDirection: 'row', justifyContent: 'space-between' },
-  resultScore: { fontSize: 12, color: '#8892B0' },
+  resultScore: { fontSize: 12 },
   resultPct: { fontSize: 13, fontWeight: '700' },
   empty: { alignItems: 'center', paddingVertical: 40, gap: 12 },
-  emptyText: { color: '#4A5080', fontSize: 15, textAlign: 'center' },
-  breakdown: { marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)', gap: 8 },
+  emptyText: { fontSize: 15, textAlign: 'center' },
+  breakdown: { marginTop: 12, paddingTop: 10, borderTopWidth: 1, gap: 8 },
   compRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  compName: { fontSize: 11, color: '#8892B0', marginBottom: 4 },
-  compBarTrack: { height: 4, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 2 },
+  compName: { fontSize: 11, marginBottom: 4 },
+  compBarTrack: { height: 4, borderRadius: 2 },
   compBarFill: { height: 4, borderRadius: 2 },
   compMeta: { alignItems: 'flex-end', minWidth: 50 },
-  compPct: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
-  compWeight: { fontSize: 10, color: '#4A5080' },
+  compPct: { fontSize: 12, fontWeight: '700' },
+  compWeight: { fontSize: 10 },
 });

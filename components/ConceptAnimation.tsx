@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, Animated, TouchableOpacity, Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useColors } from '@/hooks/useColors';
 
 interface Props {
   topicId: string;
@@ -151,6 +152,7 @@ function TappableObject({
 }: {
   item: ConceptItem; index: number; color: string; tapped: boolean; onTap: () => void; totalTaps: number;
 }) {
+  const c = useColors();
   const scale = useRef(new Animated.Value(0)).current;
   const bounce = useRef(new Animated.Value(1)).current;
   const tapNum = tapped ? index + 1 : null;
@@ -188,6 +190,7 @@ function TappableObject({
         disabled={tapped}
         style={[
           styles.obj,
+          { backgroundColor: c.card, borderColor: c.border },
           tapped && { backgroundColor: `${color}28`, borderColor: color },
         ]}
       >
@@ -195,7 +198,7 @@ function TappableObject({
           <Text style={[styles.objEmoji, tapped && { opacity: 0.5 }]}>{item.emoji}</Text>
         )}
         {item.label && (
-          <Text style={[styles.objLabel, { color: tapped ? color : '#FFFFFF' }]}>
+          <Text style={[styles.objLabel, { color: tapped ? color : c.foreground }]}>
             {item.label}
           </Text>
         )}
@@ -220,6 +223,7 @@ function TappableObject({
 }
 
 function ProgressDots({ count, current, color }: { count: number; current: number; color: string }) {
+  const c = useColors();
   return (
     <View style={styles.dotsContainer}>
       {Array.from({ length: count }, (_, i) => (
@@ -227,7 +231,7 @@ function ProgressDots({ count, current, color }: { count: number; current: numbe
           key={i}
           style={[
             styles.progressDot,
-            { backgroundColor: i < current ? color : i === current ? `${color}66` : 'rgba(255,255,255,0.12)' },
+            { backgroundColor: i < current ? color : i === current ? `${color}66` : c.border },
           ]}
         />
       ))}
@@ -236,6 +240,7 @@ function ProgressDots({ count, current, color }: { count: number; current: numbe
 }
 
 function RevealPanel({ scene, color, visible }: { scene: ConceptScene; color: string; visible: boolean }) {
+  const c = useColors();
   const fade = useRef(new Animated.Value(0)).current;
   const slide = useRef(new Animated.Value(30)).current;
 
@@ -254,11 +259,11 @@ function RevealPanel({ scene, color, visible }: { scene: ConceptScene; color: st
   if (!visible) return null;
 
   return (
-    <Animated.View style={[styles.revealPanel, { borderColor: `${color}44`, opacity: fade, transform: [{ translateY: slide }] }]}>
+    <Animated.View style={[styles.revealPanel, { backgroundColor: c.card, borderColor: `${color}44`, opacity: fade, transform: [{ translateY: slide }] }]}>
       <View style={[styles.revealIcon, { backgroundColor: `${color}22` }]}>
         <Ionicons name="bulb-outline" size={22} color={color} />
       </View>
-      <Text style={styles.revealText}>{scene.revealText}</Text>
+      <Text style={[styles.revealText, { color: c.foreground }]}>{scene.revealText}</Text>
       {scene.revealEquation && (
         <View style={[styles.equationBadge, { backgroundColor: `${color}18` }]}>
           <Text style={[styles.equationText, { color }]}>{scene.revealEquation}</Text>
@@ -269,6 +274,7 @@ function RevealPanel({ scene, color, visible }: { scene: ConceptScene; color: st
 }
 
 export default function ConceptAnimation({ topicId, topicColor, onComplete, review }: Props) {
+  const c = useColors();
   const concept = CONCEPTS[topicId] ?? CONCEPTS.counting;
   const scenes = review ? concept.scenes.slice(0, 1) : concept.scenes;
   const [sceneIdx, setSceneIdx] = useState(0);
@@ -319,11 +325,11 @@ export default function ConceptAnimation({ topicId, topicColor, onComplete, revi
       {!review && <ProgressDots count={scenes.length} current={sceneIdx} color={topicColor} />}
 
       <Animated.View style={[styles.sceneContainer, { opacity: sceneFade, flex: 1 }]}>
-        <View style={styles.instructionRow}>
+        <View style={styles.instructionRow2}>
           <View style={[styles.instructionIcon, { backgroundColor: `${topicColor}22` }]}>
             <Ionicons name="hand-left-outline" size={18} color={topicColor} />
           </View>
-          <Text style={styles.instructionText}>{scene.instruction}</Text>
+          <Text style={[styles.instructionText, { color: c.foreground }]}>{scene.instruction}</Text>
         </View>
 
         <View style={styles.objectsArea}>
@@ -342,7 +348,7 @@ export default function ConceptAnimation({ topicId, topicColor, onComplete, revi
           </View>
 
           <View style={styles.tapCounter}>
-            <Text style={styles.tapCounterText}>
+            <Text style={[styles.tapCounterText, { color: c.mutedForeground }]}>
               {tappedSet.size} / {totalTaps} tapped
             </Text>
           </View>
@@ -385,14 +391,14 @@ const styles = StyleSheet.create({
   dotsContainer: { flexDirection: 'row', justifyContent: 'center', gap: 8 },
   progressDot: { width: 28, height: 5, borderRadius: 3 },
   sceneContainer: { gap: 16 },
-  instructionRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12 },
+  instructionRow2: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12 },
   instructionIcon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  instructionText: { flex: 1, fontSize: 15, fontWeight: '600', color: '#FFFFFF', lineHeight: 20 },
+  instructionText: { flex: 1, fontSize: 15, fontWeight: '600', lineHeight: 20 },
   objectsArea: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 20 },
   objectsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 14 },
   obj: {
-    width: 72, height: 72, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 2, borderColor: 'rgba(255,255,255,0.1)',
+    width: 72, height: 72, borderRadius: 20,
+    borderWidth: 2,
     alignItems: 'center', justifyContent: 'center',
   },
   objEmoji: { fontSize: 34 },
@@ -401,17 +407,17 @@ const styles = StyleSheet.create({
     position: 'absolute', bottom: -8, right: -8,
     minWidth: 26, height: 26, borderRadius: 13, paddingHorizontal: 6,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: '#0B1026',
+    borderWidth: 2,
   },
   objBadgeText: { fontSize: 10, fontWeight: '800', color: '#FFFFFF' },
   tapCounter: { alignItems: 'center' },
-  tapCounterText: { fontSize: 12, fontWeight: '600', color: '#4A5080' },
+  tapCounterText: { fontSize: 12, fontWeight: '600' },
   revealPanel: {
-    backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 18, padding: 18,
+    borderRadius: 18, padding: 18,
     borderWidth: 1.5, alignItems: 'center', gap: 12,
   },
   revealIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  revealText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF', textAlign: 'center', lineHeight: 22 },
+  revealText: { fontSize: 16, fontWeight: '700', textAlign: 'center', lineHeight: 22 },
   equationBadge: { borderRadius: 12, paddingHorizontal: 16, paddingVertical: 8 },
   equationText: { fontSize: 15, fontWeight: '800' },
   nextSceneBtn: {

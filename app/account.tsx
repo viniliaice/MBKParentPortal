@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Alert, TextInput, ActivityIndicator,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput, ActivityIndicator,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import AuroraBackground from '@/components/AuroraBackground';
+import TopBar from '@/components/TopBar';
 import { useAuth } from '@/context/AuthContext';
+import { useColors } from '@/hooks/useColors';
 import { requestAccountDeletion } from '@/lib/accountDeletion';
 import { ACCOUNT_DELETION_URL, PRIVACY_POLICY_URL, SUPPORT_EMAIL } from '@/constants/legal';
 
@@ -28,8 +28,7 @@ import { ACCOUNT_DELETION_URL, PRIVACY_POLICY_URL, SUPPORT_EMAIL } from '@/const
  */
 export default function AccountScreen() {
   const { user } = useAuth();
-  const insets = useSafeAreaInsets();
-  const topPad = Platform.OS === 'web' ? 67 : insets.top;
+  const c = useColors();
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -76,30 +75,24 @@ export default function AccountScreen() {
   return (
     <AuroraBackground>
       <View style={{ flex: 1 }}>
-        <View style={[styles.header, { paddingTop: topPad + 12 }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Close Account</Text>
-          <View style={{ width: 36 }} />
-        </View>
+        <TopBar title="Close Account" />
 
         <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Signed in as</Text>
-            <Text style={styles.mono}>{user?.email}</Text>
+          <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border }]}>
+            <Text style={[styles.cardTitle, { color: c.foreground }]}>Signed in as</Text>
+            <Text style={[styles.mono, { color: c.mutedForeground }]}>{user?.email}</Text>
           </View>
 
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>How it works</Text>
-            <Text style={styles.hint}>
+          <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border }]}>
+            <Text style={[styles.cardTitle, { color: c.foreground }]}>How it works</Text>
+            <Text style={[styles.hint, { color: c.mutedForeground }]}>
               Accounts for this portal are created and managed by the school office. Send a request below and the
               office will contact you, confirm what can be removed, and act on the school’s records.
             </Text>
           </View>
 
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>The school will remove</Text>
+          <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border }]}>
+            <Text style={[styles.cardTitle, { color: c.foreground }]}>The school will remove</Text>
             {[
               'Your sign-in access and password',
               'Your name, email and phone numbers',
@@ -107,40 +100,40 @@ export default function AccountScreen() {
               'Your device’s push-notification token',
             ].map(line => (
               <View key={line} style={styles.row}>
-                <Ionicons name="close-circle-outline" size={16} color="#FF5370" />
-                <Text style={styles.rowText}>{line}</Text>
+                <Ionicons name="close-circle-outline" size={16} color={c.destructive} />
+                <Text style={[styles.rowText, { color: c.foreground }]}>{line}</Text>
               </View>
             ))}
           </View>
 
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>The school keeps</Text>
+          <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border }]}>
+            <Text style={[styles.cardTitle, { color: c.foreground }]}>The school keeps</Text>
             {[
               'Your child’s enrolment record',
               'Attendance, homework and exam marks',
             ].map(line => (
               <View key={line} style={styles.row}>
-                <Ionicons name="information-circle-outline" size={16} color="#F59E0B" />
-                <Text style={styles.rowText}>{line}</Text>
+                <Ionicons name="information-circle-outline" size={16} color={c.warning} />
+                <Text style={[styles.rowText, { color: c.foreground }]}>{line}</Text>
               </View>
             ))}
-            <Text style={styles.hint}>
+            <Text style={[styles.hint, { color: c.mutedForeground }]}>
               Schools are required to keep academic records. These stay with the school and are no longer linked to
               your account. Ask the office if you want a record corrected or removed.
             </Text>
           </View>
 
-          <Text style={styles.sectionLabel}>OPTIONAL — TELL THE SCHOOL WHY</Text>
+          <Text style={[styles.sectionLabel, { color: c.mutedForeground }]}>OPTIONAL — TELL THE SCHOOL WHY</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { backgroundColor: c.input, borderColor: c.border, color: c.foreground }]}
             value={reason}
             onChangeText={setReason}
             placeholder="Moving away, duplicate account…"
-            placeholderTextColor="#4A5080"
+            placeholderTextColor={c.mutedForeground}
             multiline
           />
 
-          <TouchableOpacity style={styles.dangerBtn} onPress={confirmRequest} disabled={busy} activeOpacity={0.85}>
+          <TouchableOpacity style={[styles.dangerBtn, { backgroundColor: c.destructive }]} onPress={confirmRequest} disabled={busy} activeOpacity={0.85}>
             {busy ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
@@ -152,19 +145,19 @@ export default function AccountScreen() {
           </TouchableOpacity>
 
           {PRIVACY_POLICY_URL ? (
-            <TouchableOpacity style={styles.secondaryBtn} onPress={openPolicy} activeOpacity={0.85}>
-              <Ionicons name="open-outline" size={18} color="#3D5AFE" />
-              <Text style={styles.secondaryText}>Read the school’s privacy policy</Text>
+            <TouchableOpacity style={[styles.secondaryBtn, { backgroundColor: `${c.primary}24` }]} onPress={openPolicy} activeOpacity={0.85}>
+              <Ionicons name="open-outline" size={18} color={c.primary} />
+              <Text style={[styles.secondaryText, { color: c.primary }]}>Read the school’s privacy policy</Text>
             </TouchableOpacity>
           ) : null}
 
           {ACCOUNT_DELETION_URL ? (
-            <TouchableOpacity style={styles.secondaryBtn} onPress={openWebResource} activeOpacity={0.85}>
-              <Ionicons name="open-outline" size={18} color="#3D5AFE" />
-              <Text style={styles.secondaryText}>Deletion information on the web</Text>
+            <TouchableOpacity style={[styles.secondaryBtn, { backgroundColor: `${c.primary}24` }]} onPress={openWebResource} activeOpacity={0.85}>
+              <Ionicons name="open-outline" size={18} color={c.primary} />
+              <Text style={[styles.secondaryText, { color: c.primary }]}>Deletion information on the web</Text>
             </TouchableOpacity>
           ) : (
-            <Text style={styles.hint}>
+            <Text style={[styles.hint, { color: c.mutedForeground }]}>
               You can also contact the school office directly{SUPPORT_EMAIL ? ` at ${SUPPORT_EMAIL}` : ''} to ask
               about your account or your child’s records.
             </Text>
@@ -176,20 +169,17 @@ export default function AccountScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 12 },
-  backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 17, fontWeight: '700', color: '#FFFFFF' },
   body: { paddingHorizontal: 20, paddingBottom: 40, gap: 14 },
-  card: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 16, padding: 16, gap: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
-  cardTitle: { fontSize: 14, fontWeight: '700', color: '#FFFFFF', marginBottom: 2 },
-  mono: { fontSize: 13, color: '#9BA6C6' },
+  card: { borderRadius: 16, padding: 16, gap: 8, borderWidth: 1 },
+  cardTitle: { fontSize: 14, fontWeight: '700', marginBottom: 2 },
+  mono: { fontSize: 13 },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  rowText: { flex: 1, fontSize: 13, color: '#C7CFE6', lineHeight: 19 },
-  hint: { fontSize: 12.5, color: '#8892B0', lineHeight: 19, marginTop: 4 },
-  sectionLabel: { fontSize: 11, letterSpacing: 0.8, color: '#8892B0', fontWeight: '700', marginTop: 6 },
-  input: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 14, padding: 14, color: '#FFFFFF', minHeight: 92, textAlignVertical: 'top', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
-  dangerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#FF5370', borderRadius: 14, paddingVertical: 15 },
+  rowText: { flex: 1, fontSize: 13, lineHeight: 19 },
+  hint: { fontSize: 12.5, lineHeight: 19, marginTop: 4 },
+  sectionLabel: { fontSize: 11, letterSpacing: 0.8, fontWeight: '700', marginTop: 6 },
+  input: { borderRadius: 14, padding: 14, minHeight: 92, textAlignVertical: 'top', borderWidth: 1 },
+  dangerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 14, paddingVertical: 15 },
   dangerText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
-  secondaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: 'rgba(61,90,254,0.14)', borderRadius: 14, paddingVertical: 14 },
-  secondaryText: { color: '#3D5AFE', fontSize: 14, fontWeight: '600' },
+  secondaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 14, paddingVertical: 14 },
+  secondaryText: { fontSize: 14, fontWeight: '600' },
 });

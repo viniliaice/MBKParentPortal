@@ -1,27 +1,37 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Alert, Switch } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import AuroraBackground from '@/components/AuroraBackground';
 import { useAuth } from '@/context/AuthContext';
-import { useApp } from '@/context/AppContext';
+import { useScheme } from '@/context/ThemeContext';
+import { useColors } from '@/hooks/useColors';
 
-const MENU_ITEMS = [
-  { label: 'Homework', icon: 'book-outline' as const, route: '/homework', color: '#3D5AFE', desc: 'View pending & submitted tasks' },
-  { label: 'Quizzes', icon: 'help-circle-outline' as const, route: '/quizzes', color: '#F59E0B', desc: 'Take quizzes and view results' },
-  { label: 'Attendance', icon: 'calendar-outline' as const, route: '/attendance', color: '#00BCD4', desc: 'Check daily attendance records' },
-  { label: 'Academic Results', icon: 'bar-chart-outline' as const, route: '/results', color: '#2ECC71', desc: 'Exam scores and grades' },
+interface MenuItem {
+  section: string;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  iconColor: string;
+  route?: string;
+  desc?: string;
+}
+
+const MENU_ITEMS: MenuItem[] = [
+  { section: 'Children', label: 'Attendance', icon: 'calendar-outline', iconColor: '#00BCD4', route: '/attendance', desc: 'Daily presence records per child' },
+  { section: 'Children', label: 'Homework', icon: 'book-outline', iconColor: '#3D5AFE', route: '/homework', desc: 'Pending and submitted tasks' },
+  { section: 'Children', label: 'Quizzes', icon: 'help-circle-outline', iconColor: '#F59E0B', route: '/quizzes', desc: 'Class quizzes and results' },
+  { section: 'Children', label: 'Learning Hub', icon: 'school-outline', iconColor: '#8B5CF6', route: '/(tabs)/learning', desc: 'Practice lessons and progress' },
+  { section: 'Account', label: 'My Profile', icon: 'person-outline', iconColor: '#2ECC71', route: '/account', desc: 'Signed-in account details' },
+  { section: 'Account', label: 'Privacy & Data', icon: 'shield-checkmark-outline', iconColor: '#3D5AFE', route: '/legal', desc: "How the school handles your data" },
 ];
 
 export default function MoreScreen() {
   const { user, logout } = useAuth();
-  const { getTotalXP, lessonProgress, gamification } = useApp();
+  const { setScheme, isDark } = useScheme();
+  const c = useColors();
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
-
-  const completedLessons = Object.values(lessonProgress).filter(p => p.completed).length;
-  const totalXP = getTotalXP();
 
   const handleLogout = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -30,68 +40,92 @@ export default function MoreScreen() {
     ]);
   };
 
+  const sections = ['Children', 'Account'];
+  const groups = sections.map(section => ({
+    section,
+    items: MENU_ITEMS.filter(i => i.section === section),
+  })).filter(g => g.items.length > 0);
+
   return (
     <AuroraBackground>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: Platform.OS === 'web' ? 34 + 84 : 100 }} showsVerticalScrollIndicator={false}>
         <View style={[styles.header, { paddingTop: topPad + 12 }]}>
-          <Text style={styles.headerTitle}>More</Text>
+          <Text style={[styles.headerTitle, { color: c.foreground }]}>More</Text>
         </View>
 
-        <View style={styles.profileCard}>
-          <View style={styles.profileAvatar}>
-            <Text style={styles.profileInitial}>{user?.name[0]}</Text>
+        <View style={[styles.profileCard, { backgroundColor: c.card, borderColor: c.border }]}>
+          <View style={[styles.profileAvatar, { backgroundColor: `${c.primary}33` }]}>
+            <Text style={[styles.profileInitial, { color: c.foreground }]}>{user?.name[0]}</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.profileName}>{user?.name}</Text>
-            <Text style={styles.profileEmail}>{user?.email}</Text>
+            <Text style={[styles.profileName, { color: c.foreground }]} numberOfLines={1}>{user?.name}</Text>
+            <Text style={[styles.profileEmail, { color: c.mutedForeground }]} numberOfLines={1}>{user?.email}</Text>
           </View>
         </View>
 
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Ionicons name="star" size={20} color="#F6C90E" style={{ marginBottom: 6 }} />
-            <Text style={[styles.statValue, { color: '#F6C90E' }]}>{totalXP}</Text>
-            <Text style={styles.statLabel}>Total XP</Text>
+        <Text style={[styles.sectionTitle, { color: c.mutedForeground }]}>Appearance</Text>
+        <View style={[styles.appearanceCard, { backgroundColor: c.card, borderColor: c.border }]}>
+          <View style={[styles.appearanceIcon, { backgroundColor: `${c.secondary}1F` }]}>
+            <Ionicons name={isDark ? 'moon' : 'sunny'} size={22} color={c.secondary} />
           </View>
-          <View style={styles.statCard}>
-            <Ionicons name="checkmark-circle" size={20} color="#2ECC71" style={{ marginBottom: 6 }} />
-            <Text style={[styles.statValue, { color: '#2ECC71' }]}>{completedLessons}</Text>
-            <Text style={styles.statLabel}>Lessons Done</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.menuLabel, { color: c.foreground }]}>Dark Mode</Text>
+            <Text style={[styles.menuDesc, { color: c.mutedForeground }]}>Currently {isDark ? 'dark' : 'light'}. Tap the switch to change.</Text>
           </View>
-          <View style={styles.statCard}>
-            <Ionicons name="trophy" size={20} color="#3D5AFE" style={{ marginBottom: 6 }} />
-            <Text style={[styles.statValue, { color: '#3D5AFE' }]}>{gamification.level}</Text>
-            <Text style={styles.statLabel}>Level</Text>
-          </View>
+          <Switch
+            value={isDark}
+            onValueChange={next => setScheme(next ? 'dark' : 'light')}
+            trackColor={{ false: c.border, true: c.primary }}
+            thumbColor="#FFFFFF"
+            accessibilityLabel="Dark mode"
+            accessibilityHint="Toggles between dark and light appearance"
+          />
         </View>
-        {gamification.currentStreak > 0 && (
-          <View style={styles.streakCard}>
-            <Ionicons name="flame" size={22} color="#FF5370" />
-            <Text style={styles.streakValue}>{gamification.currentStreak}-day streak</Text>
-            <Text style={styles.streakLabel}>Best: {gamification.longestStreak} days</Text>
+        <TouchableOpacity
+          style={[styles.menuItem, { backgroundColor: c.card, borderColor: c.border }]}
+          onPress={() => router.push('/appearance')}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.menuIcon, { backgroundColor: `${c.secondary}1F` }]}>
+            <Ionicons name="color-palette-outline" size={22} color={c.secondary} />
           </View>
-        )}
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.menuLabel, { color: c.foreground }]}>Appearance</Text>
+            <Text style={[styles.menuDesc, { color: c.mutedForeground }]}>Choose Light or Dark</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={c.mutedForeground} />
+        </TouchableOpacity>
 
-        <Text style={styles.sectionTitle}>Academic Records</Text>
-        {MENU_ITEMS.map(item => (
-          <TouchableOpacity key={item.label} style={styles.menuItem} onPress={() => router.push(item.route as any)} activeOpacity={0.8}>
-            <View style={[styles.menuIcon, { backgroundColor: `${item.color}22` }]}>
-              <Ionicons name={item.icon} size={22} color={item.color} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.menuLabel}>{item.label}</Text>
-              <Text style={styles.menuDesc}>{item.desc}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color="#8892B0" />
-          </TouchableOpacity>
+        {groups.map(group => (
+          <View key={group.section}>
+            <Text style={[styles.sectionTitle, { color: c.mutedForeground }]}>{group.section}</Text>
+            {group.items.map(item => {
+              return (
+                <TouchableOpacity
+                  key={item.label}
+                  style={[styles.menuItem, { backgroundColor: c.card, borderColor: c.border }]}
+                  onPress={() => item.route && router.push(item.route as any)}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.menuIcon, { backgroundColor: `${item.iconColor}1F` }]}>
+                    <Ionicons name={item.icon} size={22} color={item.iconColor} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.menuLabel, { color: c.foreground }]}>{item.label}</Text>
+                    {item.desc ? <Text style={[styles.menuDesc, { color: c.mutedForeground }]}>{item.desc}</Text> : null}
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={c.mutedForeground} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         ))}
 
-        <Text style={styles.sectionTitle}>Account</Text>
-        <TouchableOpacity style={[styles.menuItem, styles.logoutItem]} onPress={handleLogout} activeOpacity={0.8}>
-          <View style={[styles.menuIcon, { backgroundColor: 'rgba(255,83,112,0.15)' }]}>
-            <Ionicons name="log-out-outline" size={22} color="#FF5370" />
+        <TouchableOpacity style={[styles.menuItem, styles.logoutItem, { backgroundColor: c.card, borderColor: c.border }]} onPress={handleLogout} activeOpacity={0.8}>
+          <View style={[styles.menuIcon, { backgroundColor: `${c.destructive}26` }]}>
+            <Ionicons name="log-out-outline" size={22} color={c.destructive} />
           </View>
-          <Text style={[styles.menuLabel, { color: '#FF5370' }]}>Sign Out</Text>
+          <Text style={[styles.menuLabel, { color: c.destructive }]}>Sign Out</Text>
         </TouchableOpacity>
       </ScrollView>
     </AuroraBackground>
@@ -100,23 +134,18 @@ export default function MoreScreen() {
 
 const styles = StyleSheet.create({
   header: { paddingHorizontal: 20, paddingBottom: 16 },
-  headerTitle: { fontSize: 26, fontWeight: '800', color: '#FFFFFF' },
-  profileCard: { marginHorizontal: 20, marginBottom: 16, backgroundColor: 'rgba(20,29,58,0.9)', borderRadius: 18, padding: 20, flexDirection: 'row', alignItems: 'center', gap: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
-  profileAvatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(61,90,254,0.3)', alignItems: 'center', justifyContent: 'center' },
-  profileInitial: { color: '#FFFFFF', fontSize: 22, fontWeight: '800' },
-  profileName: { fontSize: 18, fontWeight: '700', color: '#FFFFFF' },
-  profileEmail: { fontSize: 13, color: '#8892B0', marginTop: 2 },
-  statsRow: { flexDirection: 'row', marginHorizontal: 20, gap: 10, marginBottom: 20 },
-  statCard: { flex: 1, backgroundColor: 'rgba(20,29,58,0.9)', borderRadius: 16, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
-  statValue: { fontSize: 22, fontWeight: '800' },
-  statLabel: { fontSize: 10, color: '#8892B0', marginTop: 2, textAlign: 'center' },
-  sectionTitle: { fontSize: 12, fontWeight: '700', color: '#8892B0', letterSpacing: 1, paddingHorizontal: 20, marginBottom: 10, marginTop: 8 },
-  menuItem: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
-  logoutItem: { borderBottomWidth: 0 },
-  streakCard: { marginHorizontal: 20, marginBottom: 20, backgroundColor: 'rgba(255,83,112,0.08)', borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderColor: 'rgba(255,83,112,0.2)' },
-  streakValue: { fontSize: 16, fontWeight: '800', color: '#FF5370', flex: 1 },
-  streakLabel: { fontSize: 12, color: '#8892B0' },
+  headerTitle: { fontSize: 26, fontWeight: '800' },
+  profileCard: { marginHorizontal: 20, marginBottom: 20, borderRadius: 18, padding: 20, flexDirection: 'row', alignItems: 'center', gap: 14, borderWidth: 1 },
+  profileAvatar: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
+  profileInitial: { fontSize: 22, fontWeight: '800' },
+  profileName: { fontSize: 18, fontWeight: '700' },
+  profileEmail: { fontSize: 13, marginTop: 2 },
+  sectionTitle: { fontSize: 12, fontWeight: '700', letterSpacing: 1, paddingHorizontal: 20, marginBottom: 8, marginTop: 8 },
+  appearanceCard: { marginHorizontal: 20, marginBottom: 8, borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 14, borderWidth: 1 },
+  appearanceIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  menuItem: { marginHorizontal: 20, marginBottom: 8, borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 14, borderWidth: 1 },
+  logoutItem: { borderWidth: 1 },
   menuIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  menuLabel: { fontSize: 16, fontWeight: '600', color: '#FFFFFF' },
-  menuDesc: { fontSize: 12, color: '#8892B0', marginTop: 2 },
+  menuLabel: { fontSize: 16, fontWeight: '600' },
+  menuDesc: { fontSize: 12, marginTop: 2 },
 });
