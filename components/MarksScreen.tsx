@@ -26,7 +26,7 @@ import { useTabBarSpacing } from '@/hooks/useScreenInsets';
 import {
   ATTENTION_THRESHOLD,
   REPORT_PERIODS,
-  academicYearKey,
+  reportAcademicYearKey,
   academicYearOptions,
   filterByMonth,
   filterByPeriod,
@@ -95,7 +95,7 @@ export function MarksScreen({ showBack = false }: Props) {
   const childResults = useMemo(() => results.filter(r => r.studentId === childId), [results, childId]);
 
   const yearKeys = useMemo(
-    () => academicYearOptions(childResults.map(r => academicYearKey(r.date)), academicYears.map(y => y.name)),
+    () => academicYearOptions(childResults.map(r => reportAcademicYearKey(r)), academicYears.map(y => y.name)),
     [childResults, academicYears],
   );
 
@@ -109,7 +109,7 @@ export function MarksScreen({ showBack = false }: Props) {
     const set = new Set<string>();
     for (const result of childResults) {
       if (result.examType !== period || !result.date) continue;
-      const key = academicYearKey(result.date);
+      const key = reportAcademicYearKey(result);
       if (key) set.add(key);
     }
     return set;

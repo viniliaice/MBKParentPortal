@@ -28,7 +28,7 @@ export type SupabaseExam = {
   id: string;
   studentId: string;
   subject: string;
-  score: number;
+  score: number | string | null;
   total: number;
   examType: string;
   month: string;
@@ -39,6 +39,9 @@ export type SupabaseExam = {
   teacherId: string | null;
   termId: string | null;
   subjectId: string | null;
+  assessmentLabel?: string | null;
+  entryState?: string | null;
+  uploadedBy?: string | null;
 };
 
 export type SupabaseAnnouncement = {

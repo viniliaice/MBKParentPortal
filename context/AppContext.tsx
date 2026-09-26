@@ -15,7 +15,16 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import type { HomeworkItem, AttendanceRecord, AppMessage } from '@/data/mockData';
 import { computeMasteryLevel, nextSrsDueDate } from '@/lib/mastery';
-import { computePendingReports, type PendingReport } from '@/lib/reportSelectors';
+import {
+  computeMonthlyResults,
+  computeTermResults,
+  computePendingReports,
+  type PendingReport,
+  type ReportComponent as ExamComponent,
+  type ReportResult as ComputedResult,
+} from '@/lib/reportSelectors';
+
+export type { ExamComponent, ComputedResult };
 
 export type AttemptSummary = { accuracyPct: number; completedAt: string | null };
 
@@ -119,24 +128,7 @@ export interface SendMessageResult {
   error?: string;
 }
 
-export interface ExamComponent {
-  name: string;
-  score: number;
-  total: number;
-  weight: number;
-}
 
-export interface ComputedResult {
-  id: string;
-  studentId: string;
-  subject: string;
-  score: number;
-  total: number;
-  examType: string;
-  month: string;
-  date: string;
-  components: ExamComponent[];
-}
 
 interface AppContextType {
   loading: boolean;
@@ -212,112 +204,7 @@ function parseClassName(className: string): { className: string; grade: string }
   };
 }
 
-function getPct(score: number, total: number): number {
-  return total > 0 ? Math.round((score / total) * 100) : 0;
-}
 
-function computeMonthlyResults(
-  exams: SupabaseExam[],
-  attendanceMap: Map<string, Map<string, { present: number; total: number }>>,
-): ComputedResult[] {
-  const results: ComputedResult[] = [];
-  const groups = new Map<string, SupabaseExam[]>();
-
-  for (const e of exams) {
-    if (['CA', 'Homework', 'Classwork', 'Quiz'].includes(e.examType)) {
-      const key = `${e.studentId}||${e.subject}||${e.month}`;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(e);
-    }
-  }
-
-  for (const [key, group] of groups) {
-    const [studentId, subject, month] = key.split('||');
-    const caExams = group.filter(e => e.examType !== 'Quiz');
-    const quizExams = group.filter(e => e.examType === 'Quiz');
-    if (caExams.length === 0 || quizExams.length === 0) continue;
-
-    const caScore = caExams.reduce((s, e) => s + e.score, 0);
-    const caTotal = caExams.reduce((s, e) => s + e.total, 0);
-
-    const monthlyAtt = attendanceMap.get(studentId);
-    const attPct = monthlyAtt && monthlyAtt.size > 0
-      ? [...monthlyAtt.values()].reduce((s, v) => s + v.present, 0) / Math.max([...monthlyAtt.values()].reduce((s, v) => s + v.total, 0), 1)
-      : 1;
-    const attScore = Math.round(attPct * 20);
-    const totalScore = caScore + attScore;
-    const totalTotal = caTotal + 20;
-
-    const quizScore = quizExams.reduce((s, e) => s + e.score, 0);
-    const quizTotal = quizExams.reduce((s, e) => s + e.total, 0);
-
-    const caPct = getPct(totalScore, totalTotal);
-    const quizPct = getPct(quizScore, quizTotal);
-    const finalPct = Math.round(caPct * 0.4 + quizPct * 0.6);
-
-    results.push({
-      id: `monthly-${studentId}-${subject}-${month}`,
-      studentId, subject,
-      score: finalPct, total: 100,
-      examType: 'monthly',
-      month, date: group[0].date,
-      components: [
-        { name: 'CA (Homework + Classwork + Attendance)', score: caPct, total: 100, weight: 40 },
-        { name: 'Quiz', score: quizPct, total: 100, weight: 60 },
-      ],
-    });
-  }
-  return results;
-}
-
-function computeTermResults(
-  exams: SupabaseExam[],
-  examTypeFilter: 'Midterm' | 'Final',
-  outputType: string,
-): ComputedResult[] {
-  const results: ComputedResult[] = [];
-  const groups = new Map<string, SupabaseExam[]>();
-
-  const componentTypes = ['CA', 'Homework', 'Classwork', 'Quiz'];
-
-  for (const e of exams) {
-    if (e.examType === examTypeFilter || componentTypes.includes(e.examType)) {
-      const key = `${e.studentId}||${e.subject}||${e.termId || 'default'}`;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(e);
-    }
-  }
-
-  for (const [key, group] of groups) {
-    const [studentId, subject] = key.split('||');
-    const targetExams = group.filter(e => e.examType === examTypeFilter);
-    const compExams = group.filter(e => componentTypes.includes(e.examType));
-    if (targetExams.length === 0 || compExams.length === 0) continue;
-
-    const compScore = compExams.reduce((s, e) => s + e.score, 0);
-    const compTotal = compExams.reduce((s, e) => s + e.total, 0);
-    const compPct = getPct(compScore, compTotal);
-
-    const examScore = targetExams.reduce((s, e) => s + e.score, 0);
-    const examTotal = targetExams.reduce((s, e) => s + e.total, 0);
-    const examPct = getPct(examScore, examTotal);
-
-    const finalPct = Math.round(compPct * 0.4 + examPct * 0.6);
-
-    results.push({
-      id: `${outputType}-${studentId}-${subject}`,
-      studentId, subject,
-      score: finalPct, total: 100,
-      examType: outputType,
-      month: '', date: targetExams[0].date,
-      components: [
-        { name: 'CA (Homework + Classwork + Quiz)', score: compPct, total: 100, weight: 40 },
-        { name: `${examTypeFilter} Exam`, score: examPct, total: 100, weight: 60 },
-      ],
-    });
-  }
-  return results;
-}
 
 const AppContext = createContext<AppContextType | null>(null);
 

@@ -7,7 +7,7 @@ import {
   View,
   type LayoutChangeEvent,
 } from 'react-native';
-import { fullMonthName, type MonthPillState } from '@/lib/reportSelectors';
+import { FULL_MONTH_NAMES, type MonthPillState } from '@/lib/reportSelectors';
 import { useColors } from '@/hooks/useColors';
 
 /**
@@ -110,7 +110,7 @@ export function MonthPillRow({
               hitSlop={{ top: metrics.hitSlop, bottom: metrics.hitSlop }}
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
-              accessibilityLabel={`${fullMonthName(month.index)}${year} report, ${month.count} subject${month.count === 1 ? '' : 's'} published`}
+              accessibilityLabel={`${FULL_MONTH_NAMES[month.index] ?? month.label}${year} report, ${month.count} subject${month.count === 1 ? '' : 's'} published`}
             >
               <Text style={[styles.text, { fontSize: metrics.fontSize, color: text }]} numberOfLines={1}>
                 {month.label}
