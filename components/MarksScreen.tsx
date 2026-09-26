@@ -26,7 +26,6 @@ import {
   ACADEMIC_YEAR_MONTHS,
   ATTENTION_THRESHOLD,
   REPORT_PERIODS,
-  academicMonthLabel,
   academicYearKey,
   academicYearOptions,
   filterByMonth,
@@ -36,6 +35,7 @@ import {
   isPeriod,
   latestMonthWithData,
   monthlyMonthCounts,
+  pendingForView,
   summarisePeriod,
   type ReportPeriod,
 } from '@/lib/reportSelectors';
@@ -94,15 +94,33 @@ export function MarksScreen({ showBack = false }: Props) {
     return current ? current.name.replace('/', '-') : '';
   }, [academicYears]);
 
-  // Default to the school's current academic year; fall back to the newest one with data.
+  /** The academic years that actually carry results for the period on screen. */
+  const yearsWithPeriodResults = useMemo(() => {
+    const set = new Set<string>();
+    for (const result of childResults) {
+      if (result.examType !== period || !result.date) continue;
+      const key = academicYearKey(result.date);
+      if (key) set.add(key);
+    }
+    return set;
+  }, [childResults, period]);
+
+  /**
+   * Default to the school's current academic year — but only while it has results for
+   * the period being viewed. A parent who taps "Final" on Home follows a card that
+   * showed a final average, so landing on the current year's empty final (the exam has
+   * not been sat yet) would contradict the screen they came from.
+   */
   useEffect(() => {
-    if (year && yearKeys.includes(year)) return;
+    if (year && yearKeys.includes(year) && (yearsWithPeriodResults.size === 0 || yearsWithPeriodResults.has(year))) return;
     if (yearKeys.length === 0) { setYear(''); return; }
+    const newestWithResults = Array.from(yearsWithPeriodResults).sort().pop();
+    if (newestWithResults && !yearsWithPeriodResults.has(year)) { setYear(newestWithResults); return; }
     const preferred = currentYearKey && yearKeys.includes(currentYearKey)
       ? currentYearKey
       : yearKeys[yearKeys.length - 1];
     setYear(preferred);
-  }, [year, yearKeys, currentYearKey]);
+  }, [year, yearKeys, currentYearKey, yearsWithPeriodResults]);
 
   const yearResults = useMemo(() => filterByYear(childResults, year), [childResults, year]);
   const periodResults = useMemo(() => filterByPeriod(yearResults, period), [yearResults, period]);
@@ -122,16 +140,14 @@ export function MarksScreen({ showBack = false }: Props) {
 
   const summary = useMemo(() => summarisePeriod(displayResults), [displayResults]);
 
-  const pendingForView = useMemo(() => {
-    return pendingReports
-      .filter(p => p.studentId === childId && p.period === period)
-      .filter(p => {
-        if (period === 'monthly') {
-          return !month || academicMonthLabel(new Date(p.date).getMonth()) === month;
-        }
-        return !year || academicYearKey(p.date) === year;
-      });
-  }, [pendingReports, childId, period, month, year]);
+  const pendingInView = useMemo(
+    () => pendingForView(
+      pendingReports.filter(p => p.studentId === childId),
+      period,
+      { month, yearKey: year },
+    ),
+    [pendingReports, childId, period, month, year],
+  );
 
   const yearIndex = yearKeys.indexOf(year);
   const prevYear = yearIndex > 0 ? yearKeys[yearIndex - 1] : null;
@@ -222,7 +238,10 @@ export function MarksScreen({ showBack = false }: Props) {
               </View>
             ) : null}
 
+            {/* Pills rather than equal thirds: with a two-digit subject count the three
+                periods do not fit a small phone, and the labels truncate. */}
             <SegmentedControl
+              scrollable
               options={periodCounts.map(p => ({ key: p.key, label: p.label, count: p.count }))}
               value={period}
               onChange={key => { setPeriod(key); setMonth(''); }}
@@ -317,10 +336,10 @@ export function MarksScreen({ showBack = false }: Props) {
                     </View>
                   )}
 
-                  {pendingForView.length > 0 ? (
+                  {pendingInView.length > 0 ? (
                     <View style={[styles.attentionBlock, { borderTopColor: c.border }]}>
                       <Text style={[styles.blockTitle, { color: c.textSecondary }]}>Not published yet</Text>
-                      {pendingForView.map(item => (
+                      {pendingInView.map(item => (
                         <View key={item.id} style={styles.attentionRow}>
                           <Ionicons name="time-outline" size={15} color={c.textDim} />
                           <Text style={[styles.attentionSubject, { color: c.textSecondary }]} numberOfLines={2}>
@@ -367,11 +386,11 @@ export function MarksScreen({ showBack = false }: Props) {
               />
             )}
 
-            {displayResults.length === 0 && pendingForView.length > 0 ? (
+            {displayResults.length === 0 && pendingInView.length > 0 ? (
               <View style={styles.results}>
                 <Card>
                   <Text style={[styles.blockTitle, { color: c.textSecondary }]}>Being published</Text>
-                  {pendingForView.map(item => (
+                  {pendingInView.map(item => (
                     <View key={item.id} style={styles.attentionRow}>
                       <Ionicons name="time-outline" size={15} color={c.textDim} />
                       <Text style={[styles.attentionSubject, { color: c.textSecondary }]} numberOfLines={2}>

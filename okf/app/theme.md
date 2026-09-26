@@ -28,6 +28,12 @@ themed too. The preference is stored on the device under `@mbk_theme`; `system` 
 default) follows the OS via `useColorScheme()`. `app.json` sets
 `userInterfaceStyle: "automatic"` so the OS reports the real scheme.
 
+# Wide screens
+
+The app is phone-first, so on a tablet or a desktop browser `app/_layout.tsx` caps the
+content column at 720pt and centres it. Without it, phone-sized cards stretch to the full
+width and line lengths become hard to read.
+
 # Rules
 
 - Never hard-code a colour in a screen or component: `tests/app/theme.test.mjs` fails the

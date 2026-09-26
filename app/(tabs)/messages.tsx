@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AuroraBackground from '@/components/AuroraBackground';
 import { AnnouncementCard } from '@/components/AnnouncementCard';
 import { EmptyState } from '@/components/EmptyState';
+import { LoadingState } from '@/components/LoadingState';
 import { MessageDetailModal } from '@/components/MessageDetailModal';
 import { MessageRow } from '@/components/MessageRow';
 import { ScreenHeader } from '@/components/ScreenHeader';
@@ -48,7 +49,7 @@ export default function MessagesScreen() {
   const tabSpacing = useTabBarSpacing();
   const {
     messages, announcements, unreadCount, newAnnouncementsCount, announcementsSeenAt,
-    markAnnouncementsSeen, sendMessage, loadContacts, refresh,
+    markAnnouncementsSeen, sendMessage, loadContacts, refresh, loading,
   } = useApp();
 
   const [view, setView] = useState<View_>(params.view === 'announcements' || params.view === 'sent' ? params.view : 'inbox');
@@ -156,18 +157,26 @@ export default function MessagesScreen() {
           }
         />
 
-        <SegmentedControl
-          options={[
-            { key: 'inbox' as const, label: 'Inbox', count: unreadCount },
-            { key: 'announcements' as const, label: 'Announcements', count: newAnnouncementsCount },
-            { key: 'sent' as const, label: 'Sent' },
-          ]}
-          value={view}
-          onChange={setView}
-          style={{ marginBottom: 12 }}
-        />
+        {/* Scrollable, because three long segment labels do not fit a small phone:
+            'Announcements' was being truncated to 'Announce…'. */}
+        <View style={{ marginBottom: 12 }}>
+          <SegmentedControl
+            scrollable
+            options={[
+              { key: 'inbox' as const, label: 'Inbox', count: unreadCount },
+              { key: 'announcements' as const, label: 'Announcements', count: newAnnouncementsCount },
+              { key: 'sent' as const, label: 'Sent' },
+            ]}
+            value={view}
+            onChange={setView}
+          />
+        </View>
 
-        {view === 'announcements' ? (
+        {/* Nothing has arrived yet and the fetch is still running: say so, rather
+            than showing an empty inbox that reads as "the school sent nothing". */}
+        {loading && messages.length === 0 && announcements.length === 0 ? (
+          <LoadingState blocks={3} />
+        ) : view === 'announcements' ? (
           <ScrollView
             contentContainerStyle={{ paddingBottom: tabSpacing + 12 }}
             refreshControl={

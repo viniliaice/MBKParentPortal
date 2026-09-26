@@ -78,7 +78,9 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
     minHeight: 42,
   },
-  segmentScrollable: { flex: 0, minWidth: 92 },
+  // flexShrink is explicit: react-native-web lets a segment shrink below its
+  // content, which silently truncates a long label instead of scrolling the row.
+  segmentScrollable: { flexGrow: 0, flexShrink: 0, flexBasis: 'auto', minWidth: 92 },
   label: { fontSize: 13.5, fontWeight: '700' },
   count: { borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1, minWidth: 20, alignItems: 'center' },
   countText: { fontSize: 11, fontWeight: '700' },

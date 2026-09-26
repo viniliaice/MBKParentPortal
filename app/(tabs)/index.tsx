@@ -126,7 +126,9 @@ export default function HomeScreen() {
   const greeting = greetingFor(new Date());
   const firstName = user?.name.split(' ')[0] ?? 'Parent';
   const attention = academics.attention.slice(0, 2);
-  const pendingForPeriod = academics.pending;
+  // Only what is missing from the report this card is actually about: a midterm the
+  // school has not held yet is not something to tell a parent about in September.
+  const pendingForPeriod = academics.latestPending;
 
   if (loading && students.length === 0) {
     return (

@@ -179,6 +179,37 @@ describe('report selectors', { skip }, () => {
     assert.deepEqual(selectors.computePendingReports([]), []);
   });
 
+  it('scopes pending work to the period being viewed', () => {
+    const pending = [
+      { id: 'p-sep', studentId: 'a', subject: 'Science', period: 'monthly', month: 'Sep',
+        date: '2025-09-20T00:00:00.000Z', missing: ['quiz'] },
+      { id: 'p-dec', studentId: 'a', subject: 'Maths', period: 'monthly', month: 'Dec',
+        date: '2025-12-12T00:00:00.000Z', missing: ['quiz'] },
+      { id: 'p-midterm', studentId: 'a', subject: 'English', period: 'midterm', month: '',
+        date: '2025-10-01T00:00:00.000Z', missing: ['classwork, homework and quiz'] },
+      { id: 'p-last-year', studentId: 'a', subject: 'Somali', period: 'monthly', month: 'Sep',
+        date: '2024-09-20T00:00:00.000Z', missing: ['quiz'] },
+    ];
+    const ids = items => items.map(p => p.id);
+
+    assert.deepEqual(
+      ids(selectors.pendingForView(pending, 'monthly', { month: 'Sep', yearKey: '2025-2026' })),
+      ['p-sep'],
+      'only September of the year being viewed',
+    );
+    assert.deepEqual(
+      ids(selectors.pendingForView(pending, 'monthly', { yearKey: '2025-2026' })),
+      ['p-sep', 'p-dec'],
+      'without a month, every month of that period in the year',
+    );
+    assert.deepEqual(
+      ids(selectors.pendingForView(pending, 'midterm', { yearKey: '2025-2026' })),
+      ['p-midterm'],
+      'a different period never borrows the monthly list',
+    );
+    assert.deepEqual(selectors.pendingForView([], 'final'), []);
+  });
+
   it('summarises the child from their most recent report', () => {
     const results = [
       monthlyResult('a', 'Maths', 80, '2025-09-15T00:00:00.000Z', 'Sep'),
@@ -200,6 +231,10 @@ describe('report selectors', { skip }, () => {
     assert.equal(childA.subjectCount, 1);
     assert.equal(childA.latestAssessment.pct, 40);
     assert.deepEqual(childA.pending.map(p => p.subject), ['English']);
+    assert.deepEqual(childA.latestPending.map(p => p.subject), ['English'],
+      'the pending work shown beside the summary is the summary period’s');
+    assert.equal(childA.period, 'monthly');
+    assert.equal(childA.month, 'Dec');
 
     const childB = selectors.summariseChild(results, pending, 'b');
     assert.equal(childB.averagePct, 90);
@@ -211,5 +246,19 @@ describe('report selectors', { skip }, () => {
     assert.equal(childC.period, null);
     assert.equal(childC.label, '');
     assert.equal(childC.subjectCount, 0);
+    assert.deepEqual(childC.latestPending, []);
+
+    // December is the month being summarised, so September's missing quiz — and the
+    // midterm still to be sat — must not appear next to it.
+    const childD = selectors.summariseChild(results, [
+      { id: 'p-sep', studentId: 'a', subject: 'Science', period: 'monthly', month: 'Sep',
+        date: '2025-09-20T00:00:00.000Z', missing: ['quiz'] },
+      { id: 'p-dec', studentId: 'a', subject: 'Maths', period: 'monthly', month: 'Dec',
+        date: '2025-12-12T00:00:00.000Z', missing: ['quiz'] },
+      { id: 'p-term', studentId: 'a', subject: 'English', period: 'midterm', month: '',
+        date: '2025-10-01T00:00:00.000Z', missing: ['midterm exam'] },
+    ], 'a');
+    assert.deepEqual(childD.latestPending.map(p => p.id), ['p-dec']);
+    assert.equal(childD.pending.length, 3, 'the full list is still available');
   });
 });

@@ -16,6 +16,13 @@ Nothing academic sits behind a generic menu: Home's report cards and the Marks t
 land on the same screen (`components/MarksScreen.tsx`), and `/results` still renders it for
 older links.
 
+# Which academic year opens
+
+The Marks screen opens on the school's current academic year — but only while that year
+has results for the period being viewed; otherwise it falls back to the newest year that
+does. A parent who taps *Final* on a Home card showing a final average must not land on
+the current year's empty final (the exam has not been sat yet).
+
 # Report periods
 
 | Period | Source rows (`exams.examType`) | Label |
@@ -43,7 +50,7 @@ produces. It selects, labels and summarises — never recalculates.
 | Periods | `isPeriod`, `filterByPeriod`, `filterByYear`, `academicYearKey`, `academicYearOptions` |
 | Months | `academicMonthLabel`, `monthlyMonthCounts`, `latestMonthWithData`, `filterByMonth` |
 | Summaries | `summarisePeriod` (average, grade, strongest ≥ 80, attention < 60), `latestPeriodSummary`, `summariseChild` |
-| Missing work | `computePendingReports` |
+| Missing work | `computePendingReports`, `pendingForView` (narrows the list to the period and month the parent is looking at) |
 
 # "Not published yet" instead of a zero
 
@@ -52,6 +59,11 @@ produces. It selects, labels and summarises — never recalculates.
 one component **and** the target exam). Anything it returns has no computed result, so the
 Marks screen lists the subject with what is still missing rather than rendering a
 misleading 0%. Tests: `tests/app/report-selectors.test.mjs`.
+
+Both screens then narrow that list with `pendingForView` to the period (and month) they
+are showing — Home to the period of the summary it displays, Marks to the selected tab —
+so a midterm the school has not held yet is never reported as missing while the parent is
+looking at September.
 
 # Source
 

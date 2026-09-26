@@ -344,6 +344,30 @@ export function computePendingReports(exams: ExamRow[]): PendingReport[] {
   return pending;
 }
 
+/**
+ * The pending reports that belong to one view of the marks screen. Scoping them the
+ * same way as the results beside them is what keeps the pair honest: a midterm that
+ * has not been sat yet must not read as "still being published" while the parent is
+ * looking at September.
+ */
+export function pendingForView(
+  pending: PendingReport[],
+  period: ReportPeriod,
+  options: { month?: string; yearKey?: string } = {},
+): PendingReport[] {
+  const { month = '', yearKey = '' } = options;
+
+  return pending.filter(item => {
+    if (item.period !== period) return false;
+    if (!item.date) return true;
+    if (yearKey && academicYearKey(item.date) !== yearKey) return false;
+    if (period === 'monthly' && month) {
+      return academicMonthLabel(new Date(item.date).getMonth()) === month;
+    }
+    return true;
+  });
+}
+
 export interface ChildAcademics {
   /** The period the summary below is drawn from — the most recent one with results. */
   period: ReportPeriod | null;
@@ -356,8 +380,10 @@ export interface ChildAcademics {
   strongest: SubjectScore | null;
   attention: SubjectScore[];
   latestAssessment: { subject: string; pct: number; date: string } | null;
-  /** Results the school has not finished publishing for this child. */
+  /** Results the school has not finished publishing for this child, any period. */
   pending: PendingReport[];
+  /** The same list, narrowed to the period and month the summary above is about. */
+  latestPending: PendingReport[];
   hasAnyResult: boolean;
 }
 
@@ -380,6 +406,7 @@ export function summariseChild(
     attention: [],
     latestAssessment: null,
     pending,
+    latestPending: [],
     hasAnyResult: false,
   };
 
@@ -401,6 +428,7 @@ export function summariseChild(
 
   return {
     period,
+    latestPending: pendingForView(pending, period, { month, yearKey }),
     label: period === 'monthly'
       ? `${formatMonthYear(latest.date, latest.month)} monthly report`
       : period === 'midterm' ? 'Midterm report' : 'Final report',
