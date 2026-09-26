@@ -261,4 +261,118 @@ describe('report selectors', { skip }, () => {
     assert.deepEqual(childD.latestPending.map(p => p.id), ['p-dec']);
     assert.equal(childD.pending.length, 3, 'the full list is still available');
   });
+  it('maps every calendar month onto a label, summer included', () => {
+    assert.deepEqual(selectors.CALENDAR_MONTHS, ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']);
+    assert.equal(selectors.academicMonthLabel(6), 'Jul', 'a summer mark has to land somewhere');
+    assert.equal(selectors.academicMonthLabel(7), 'Aug');
+    assert.equal(selectors.fullMonthName(8), 'September');
+    assert.equal(selectors.fullMonthName(0), 'January');
+  });
+
+  it('keeps July, August and the school months apart inside one year', () => {
+    const jun = monthlyResult('a', 'Maths', 72, '2026-06-14T00:00:00.000Z', 'Jun');
+    const jul = monthlyResult('a', 'Maths', 60, '2026-07-14T00:00:00.000Z', 'Jul');
+    const aug = monthlyResult('a', 'Maths', 66, '2026-08-14T00:00:00.000Z', 'Aug');
+
+    assert.deepEqual(selectors.filterByMonth([jun, jul, aug], 'Jun', '2025-2026'), [jun]);
+    assert.deepEqual(selectors.filterByMonth([jun, jul, aug], 'Jul', '2025-2026'), [jul]);
+    assert.deepEqual(selectors.filterByMonth([jun, jul, aug], 'Aug', '2025-2026'), [aug]);
+    assert.equal(selectors.latestMonthWithData([jun, aug]), 'Aug');
+  });
+
+  it('lights the months a child has marks for and no others', () => {
+    const results = [
+      // August has two subjects published; September has nothing entered at all.
+      monthlyResult('a', 'Maths', 80, '2026-08-14T00:00:00.000Z', 'Aug'),
+      monthlyResult('a', 'English', 62, '2026-08-18T00:00:00.000Z', 'Aug'),
+      monthlyResult('a', 'Maths', 74, '2025-10-09T00:00:00.000Z', 'Oct'),
+      monthlyResult('b', 'Maths', 90, '2026-08-20T00:00:00.000Z', 'Aug'),
+    ];
+
+    const pills = selectors.monthPillStates(results, 'a');
+    const state = label => pills.months.find(m => m.label === label);
+
+    assert.deepEqual(pills.months.map(m => m.label), Array.from(selectors.CALENDAR_MONTHS),
+      'twelve pills, Jan to Dec');
+    assert.equal(pills.yearKey, '2025-2026', 'the year of this child’s newest marks');
+    assert.equal(state('Aug').hasMarks, true);
+    assert.equal(state('Aug').count, 2, 'both published subjects, and nothing of child b’s');
+    assert.equal(state('Aug').year, 2026, 'Jan–Aug sit in the academic year’s second year');
+    assert.equal(state('Sep').hasMarks, false, 'a month with nothing entered must stay empty');
+    assert.equal(state('Oct').hasMarks, true);
+    assert.equal(state('Oct').year, 2025, 'Sep–Dec sit in the academic year’s first year');
+    assert.deepEqual(
+      pills.months.filter(m => m.hasMarks).map(m => m.label),
+      ['Aug', 'Oct'],
+    );
+    assert.equal(state('Jan').year, 2026);
+    assert.equal(state('Dec').year, 2025);
+  });
+
+  it('covers the school year that holds the latest report, not the device clock', () => {
+    const results = [
+      monthlyResult('a', 'Maths', 80, '2026-09-14T00:00:00.000Z', 'Sep'),
+    ];
+
+    const pills = selectors.monthPillStates(results, 'a');
+    const state = label => pills.months.find(m => m.label === label);
+
+    assert.equal(pills.yearKey, '2026-2027');
+    assert.equal(state('Sep').year, 2026);
+    assert.equal(state('Sep').hasMarks, true);
+    assert.equal(state('Jan').year, 2027, 'January of the same school year');
+    assert.equal(state('Jan').hasMarks, false, 'and nothing published in it yet');
+  });
+
+  it('leaves every pill empty for a child with no monthly marks', () => {
+    const otherChild = [monthlyResult('b', 'Maths', 70, '2025-09-01T00:00:00.000Z', 'Sep')];
+
+    const pills = selectors.monthPillStates(otherChild, 'a');
+    assert.equal(pills.months.length, 12);
+    assert.deepEqual(pills.months.map(m => m.hasMarks), Array(12).fill(false));
+    assert.equal(pills.yearKey, '');
+
+    // With no results of their own the row still needs a year to hang on: the school's.
+    const withFallback = selectors.monthPillStates([], 'a', '2026-2027');
+    assert.equal(withFallback.yearKey, '2026-2027');
+    assert.deepEqual(withFallback.months.map(m => m.hasMarks), Array(12).fill(false));
+    assert.equal(withFallback.months[0].year, 2027);
+    assert.equal(withFallback.months[8].year, 2026);
+  });
+
+  it('calculates each child’s pills independently', () => {
+    const results = [
+      monthlyResult('a', 'Maths', 80, '2026-01-15T00:00:00.000Z', 'Jan'),
+      monthlyResult('a', 'Science', 55, '2026-02-12T00:00:00.000Z', 'Feb'),
+      monthlyResult('b', 'Maths', 55, '2026-03-12T00:00:00.000Z', 'Mar'),
+    ];
+
+    const a = selectors.monthPillStates(results, 'a');
+    const b = selectors.monthPillStates(results, 'b');
+    const labels = pills => pills.months.filter(m => m.hasMarks).map(m => m.label);
+
+    assert.deepEqual(labels(a), ['Jan', 'Feb']);
+    assert.deepEqual(labels(b), ['Mar']);
+    assert.equal(a.months.find(m => m.label === 'Jan').count, 1);
+    assert.equal(b.months.find(m => m.label === 'Jan').count, 0,
+      'one child’s January never lights another’s');
+  });
+
+  it('lights a month on the app’s own definition of published', () => {
+    // A subject with a CA and no quiz has no computed result — it is still pending — so
+    // it contributes nothing. A month lights on the subjects that *are* published,
+    // which is the same month the marks screen offers.
+    const caOnly = [exam('a', 'Maths', 'Homework', '2025-09-10T00:00:00.000Z')];
+    const pending = selectors.computePendingReports(caOnly).filter(p => p.period === 'monthly');
+    assert.equal(pending.length, 1);
+
+    const published = [monthlyResult('a', 'English', 70, '2025-09-12T00:00:00.000Z', 'Sep')];
+    const pills = selectors.monthPillStates(published, 'a');
+    const sep = pills.months.find(m => m.label === 'Sep');
+
+    assert.equal(sep.hasMarks, true);
+    assert.equal(sep.count, 1, 'the unpublished subject is not counted');
+    assert.equal(sep.academicMonth, 'Sep', 'the month a pill opens');
+  });
 });

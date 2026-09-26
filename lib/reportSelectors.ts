@@ -69,6 +69,19 @@ export const ACADEMIC_YEAR_MONTHS = ['Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', '
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+const MONTH_NAMES_LONG = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/** Calendar months, Jan → Dec — the order the child card's month pills are drawn in. */
+export const CALENDAR_MONTHS: readonly string[] = MONTH_NAMES;
+
+/** Full month name, for screen readers: 'Sep' on its own reads as an abbreviation. */
+export function fullMonthName(calendarMonthIndex: number): string {
+  return MONTH_NAMES_LONG[calendarMonthIndex] ?? '';
+}
+
 export function percentage(score: number, total: number): number {
   return total > 0 ? Math.round((score / total) * 100) : 0;
 }
@@ -136,9 +149,23 @@ export function filterByPeriod<T extends ReportResult>(results: T[], period: Rep
   return results.filter(r => r.examType === period);
 }
 
-/** The academic-month label ('Sep'…'Jun') a calendar month index belongs to. */
-export function academicMonthLabel(calendarMonthIndex: number): string {
-  return ACADEMIC_YEAR_MONTHS[calendarMonthIndex >= 8 ? calendarMonthIndex - 8 : calendarMonthIndex + 4];
+/**
+ * The academic-month label ('Sep'…'Jun') a calendar month index belongs to.
+ *
+ * July and August fall outside the school year, but a mark dated then still has to
+ * land somewhere: they map to themselves, so a summer mark lights its own pill instead
+ * of being dropped silently.
+ */
+export function academicMonthLabel(calendarMonth: number): string {
+  const index = calendarMonth >= 8 ? calendarMonth - 8 : calendarMonth + 4;
+  return ACADEMIC_YEAR_MONTHS[index] ?? MONTH_NAMES[calendarMonth] ?? '';
+}
+
+/** The calendar month (0 = Jan) an academic-month code stands for, or -1 if it is not one. */
+function calendarMonthIndex(monthLabel: string): number {
+  const academicIndex = ACADEMIC_YEAR_MONTHS.indexOf(monthLabel);
+  if (academicIndex >= 0) return academicIndex < 4 ? academicIndex + 8 : academicIndex - 4;
+  return MONTH_NAMES.indexOf(monthLabel);
 }
 
 /** How many monthly results each academic month holds (months with none are omitted). */
@@ -152,6 +179,78 @@ export function monthlyMonthCounts(results: ReportResult[]): Map<string, number>
     map.set(label, (map.get(label) ?? 0) + 1);
   }
   return map;
+}
+
+export interface MonthPillState {
+  /** Calendar month index, 0 = Jan — the pills are always drawn Jan → Dec. */
+  index: number;
+  /** Three-letter label, e.g. 'Sep'. */
+  label: string;
+  /** Calendar year this pill falls in, given the academic year the row covers. */
+  year: number | null;
+  /** The academic year the row covers, e.g. '2026-2027'. */
+  yearKey: string;
+  /** The month code the marks screen groups by — the value a pill navigates with. */
+  academicMonth: string;
+  /** Published monthly subject results in this month. */
+  count: number;
+  /** True only when the school has published marks for this student and month. */
+  hasMarks: boolean;
+}
+
+export interface MonthPillStates {
+  /** The academic year the row covers. Empty when there is nothing to place it in. */
+  yearKey: string;
+  months: MonthPillState[];
+}
+
+/**
+ * The twelve calendar-month pills for one child: which months of the academic year on
+ * screen actually carry published monthly marks.
+ *
+ * "Published" means `computeMonthlyResults` produced a result for it — the same rule the
+ * marks screen uses to offer a month at all — so a month with only half a subject's
+ * marks entered stays empty rather than reading as half full. The year is the one
+ * `latestPeriodSummary` picks, i.e. the year the dashboard's own "Latest: …" line comes
+ * from, so the pills and the month named beside them cannot disagree. A child with no
+ * monthly marks at all falls back to the school's current year and lights nothing.
+ */
+export function monthPillStates(
+  results: ReportResult[],
+  studentId: string,
+  fallbackYearKey = '',
+): MonthPillStates {
+  const monthly = filterByPeriod(
+    results.filter(r => r.studentId === studentId),
+    'monthly',
+  ).filter(r => !!r.date);
+
+  const yearKey = latestPeriodSummary(monthly, 'monthly')?.yearKey || fallbackYearKey;
+  const [startYear, endYear] = yearKey.split('-').map(Number);
+  const inYear = yearKey ? filterByYear(monthly, yearKey) : [];
+
+  return {
+    yearKey,
+    months: CALENDAR_MONTHS.map((label, index) => {
+      // Sep–Dec sit in the academic year's first calendar year, Jan–Aug in its second:
+      // the same split `filterByMonth` applies when it maps a month back onto a date.
+      const year = Number.isInteger(startYear) && Number.isInteger(endYear)
+        ? (index >= 8 ? startYear : endYear)
+        : null;
+      const academicMonth = academicMonthLabel(index);
+      const inMonth = yearKey ? filterByMonth(inYear, academicMonth, yearKey) : [];
+
+      return {
+        index,
+        label,
+        year,
+        yearKey,
+        academicMonth,
+        count: inMonth.length,
+        hasMarks: inMonth.length > 0,
+      };
+    }),
+  };
 }
 
 /** The most recent academic month that has monthly results, or null. */
@@ -170,13 +269,12 @@ export function latestMonthWithData(results: ReportResult[]): string | null {
 
 /** Monthly results belonging to one academic month inside one academic year. */
 export function filterByMonth(results: ReportResult[], monthLabel: string, yearKey: string): ReportResult[] {
-  const acadIdx = ACADEMIC_YEAR_MONTHS.indexOf(monthLabel);
-  if (acadIdx < 0) return [];
-  const calendarMonth = acadIdx < 4 ? acadIdx + 8 : acadIdx - 4;
+  const calendarMonth = calendarMonthIndex(monthLabel);
+  if (calendarMonth < 0) return [];
   const [startYear, endYear] = yearKey.split('-');
-  // Sep–Dec sit in the first year of the academic year; Jan–Jun in the second.
+  // Sep–Dec sit in the first year of the academic year; Jan–Aug in the second.
   const calendarYear = yearKey
-    ? Number(acadIdx >= 4 ? endYear : startYear)
+    ? Number(calendarMonth >= 8 ? startYear : endYear)
     : null;
 
   return results.filter(r => {

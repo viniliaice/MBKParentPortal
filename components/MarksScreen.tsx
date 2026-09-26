@@ -23,7 +23,6 @@ import { useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { useTabBarSpacing } from '@/hooks/useScreenInsets';
 import {
-  ACADEMIC_YEAR_MONTHS,
   ATTENTION_THRESHOLD,
   REPORT_PERIODS,
   academicYearKey,
@@ -37,6 +36,7 @@ import {
   monthlyMonthCounts,
   pendingForView,
   summarisePeriod,
+  type MonthPillState,
   type ReportPeriod,
 } from '@/lib/reportSelectors';
 
@@ -56,15 +56,15 @@ interface Props {
 export function MarksScreen({ showBack = false }: Props) {
   const c = useColors();
   const tabSpacing = useTabBarSpacing();
-  const params = useLocalSearchParams<{ period?: string; student?: string }>();
+  const params = useLocalSearchParams<{ period?: string; student?: string; month?: string; year?: string }>();
   const {
     students, selectedStudent, setSelectedStudentId, results, pendingReports,
     academicYears, loading, error, refresh,
   } = useApp();
 
   const [period, setPeriod] = useState<ReportPeriod>(isPeriod(params.period) ? params.period : 'monthly');
-  const [year, setYear] = useState('');
-  const [month, setMonth] = useState('');
+  const [year, setYear] = useState(params.year ?? '');
+  const [month, setMonth] = useState(params.month ?? '');
   const [refreshing, setRefreshing] = useState(false);
   const [retrying, setRetrying] = useState(false);
 
@@ -72,6 +72,15 @@ export function MarksScreen({ showBack = false }: Props) {
   useEffect(() => {
     if (isPeriod(params.period)) setPeriod(params.period);
   }, [params.period]);
+
+  // A month pill on the dashboard opens that child's report for that month.
+  useEffect(() => {
+    if (params.month) setMonth(params.month);
+  }, [params.month]);
+
+  useEffect(() => {
+    if (params.year) setYear(params.year);
+  }, [params.year]);
 
   useEffect(() => {
     if (params.student && students.some(s => s.id === params.student)) {
@@ -165,6 +174,17 @@ export function MarksScreen({ showBack = false }: Props) {
     setRetrying(false);
   }, [refresh]);
 
+  /**
+   * A month pill pressed on this screen moves the screen instead of navigating to it:
+   * the child, the academic year and the month all come from the pill, and the auto-select
+   * effects below leave them alone because that month has marks behind it.
+   */
+  const onSelectMonth = useCallback((studentId: string, pill: MonthPillState) => {
+    if (students.some(s => s.id === studentId)) setSelectedStudentId(studentId);
+    if (pill.yearKey) setYear(pill.yearKey);
+    setMonth(pill.academicMonth);
+  }, [students, setSelectedStudentId]);
+
   const periodCounts = useMemo(
     () => REPORT_PERIODS.map(p => ({
       key: p.key,
@@ -175,7 +195,7 @@ export function MarksScreen({ showBack = false }: Props) {
   );
 
   const averageTone = { success: c.accent, warning: c.warning, danger: c.destructive };
-  const monthsWithData = ACADEMIC_YEAR_MONTHS.filter(m => (monthCounts.get(m) ?? 0) > 0);
+  const hasMonthlyData = monthCounts.size > 0;
 
   return (
     <AuroraBackground>
@@ -194,7 +214,15 @@ export function MarksScreen({ showBack = false }: Props) {
           onBack={showBack ? () => router.back() : undefined}
         />
 
-        <ChildSelector dense />
+        {/* The child cards carry the month control: twelve pills, filled where this
+            child's monthly marks are published, which one is on screen ringed. */}
+        <ChildSelector
+          dense
+          showMonths
+          onSelectMonth={onSelectMonth}
+          activeMonth={month}
+          activeYearKey={year}
+        />
 
         {loading && students.length === 0 ? (
           <View style={{ marginTop: 16 }}>
@@ -246,42 +274,6 @@ export function MarksScreen({ showBack = false }: Props) {
               value={period}
               onChange={key => { setPeriod(key); setMonth(''); }}
             />
-
-            {period === 'monthly' && monthsWithData.length > 0 ? (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.monthRow}
-                style={{ marginTop: 12 }}
-              >
-                {monthsWithData.map(m => {
-                  const active = month === m;
-                  return (
-                    <TouchableOpacity
-                      key={m}
-                      style={[
-                        styles.monthChip,
-                        {
-                          backgroundColor: active ? c.primarySoft : c.surface,
-                          borderColor: active ? c.primary : c.border,
-                        },
-                      ]}
-                      onPress={() => setMonth(m)}
-                      activeOpacity={0.85}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: active }}
-                    >
-                      <Text style={[styles.monthText, { color: active ? c.primary : c.textSecondary }]}>{m}</Text>
-                      <View style={[styles.monthBadge, { backgroundColor: active ? c.primary : c.surfaceMuted }]}>
-                        <Text style={[styles.monthBadgeText, { color: active ? c.onBrand : c.textSecondary }]}>
-                          {monthCounts.get(m) ?? 0}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            ) : null}
 
             {displayResults.length > 0 ? (
               <View style={styles.summaryWrap}>
@@ -375,7 +367,7 @@ export function MarksScreen({ showBack = false }: Props) {
                   childResults.length === 0
                     ? 'No marks published yet'
                     : period === 'monthly'
-                      ? monthsWithData.length === 0 ? 'No monthly reports yet' : 'No monthly report for this month'
+                      ? hasMonthlyData ? 'No monthly report for this month' : 'No monthly reports yet'
                       : `No ${period} report yet`
                 }
                 message={
@@ -412,20 +404,6 @@ const styles = StyleSheet.create({
   yearRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, paddingVertical: 8 },
   yearArrow: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   yearLabel: { fontSize: 13.5, fontWeight: '700', minWidth: 150, textAlign: 'center' },
-  monthRow: { paddingHorizontal: 20, gap: 8 },
-  monthChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    minHeight: 44,
-  },
-  monthText: { fontSize: 14, fontWeight: '700' },
-  monthBadge: { borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1, minWidth: 20, alignItems: 'center' },
-  monthBadgeText: { fontSize: 11, fontWeight: '700' },
   summaryWrap: { paddingHorizontal: 20, marginTop: 14 },
   summaryCard: { gap: 12 },
   summaryTop: { flexDirection: 'row', alignItems: 'center', gap: 14 },
