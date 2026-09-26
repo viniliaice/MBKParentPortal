@@ -1049,3 +1049,41 @@ export function monthPillStates(
     }),
   };
 }
+
+/**
+ * Children ordered by how recently the school entered marks for them: newest first,
+ * children with nothing entered at all last, and the school's own order kept between
+ * children who share a date. The child a parent is most likely opening the app for
+ * should be the first card they land on.
+ *
+ * "Entered" covers both halves of the school's own definition — a published result counts,
+ * and so does work that is still being published (continuous assessment with no monthly
+ * test yet), because in both cases the school recorded something for that child.
+ */
+export function orderStudentsByRecentMarks<T extends { id: string }>(
+  students: T[],
+  results: ReportResult[],
+  pendingReports: PendingReport[],
+): T[] {
+  const latestByStudent = new Map<string, string>(
+    students.map(student => {
+      let latest = '';
+      for (const r of results) {
+        if (r.studentId === student.id && r.date > latest) latest = r.date;
+      }
+      for (const p of pendingReports) {
+        if (p.studentId === student.id && p.date > latest) latest = p.date;
+      }
+      return [student.id, latest];
+    }),
+  );
+
+  return [...students].sort((a, b) => {
+    const left = latestByStudent.get(a.id) ?? '';
+    const right = latestByStudent.get(b.id) ?? '';
+    if (left === right) return 0;      // the sort is stable: ties keep the school's order
+    if (!left) return 1;               // nothing entered at all goes to the end
+    if (!right) return -1;
+    return left > right ? -1 : 1;      // newest first
+  });
+}
