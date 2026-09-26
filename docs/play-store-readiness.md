@@ -88,12 +88,14 @@ Documented in `docs/play-store-readiness.md` and `docs/remediation-report.md`.
 
 Still to do, in this order, and none of it can be done from the repository:
 
-- [ ] **Firebase**: in the same project, add an Android app with package
-      `com.MBKConnect` and download the new `google-services.json`. The current
-      file still declares the old package, and `npm test` fails on exactly that
+- [ ] **Firebase**: in project **`mbkconnect`**, add an Android app with package
+      `com.MBKConnect` and download the new `google-services.json` (expected:
+      `project_id = mbkconnect`, `storage_bucket = mbkconnect.firebasestorage.app`).
+      `npm test` fails on a wrong-project or wrong-package file
       (`tests/config/app-config.test.mjs`) — deliberately, because the Google
       Services Gradle plugin fails the build for the same reason.
-- [ ] Replace `google-services.json` locally (git-ignored) and confirm
+- [ ] Place `google-services.json` locally (git-ignored) **and** in the
+      `GOOGLE_SERVICES_JSON` EAS secret (`docs/notifications.md` §2b), then confirm
       `npm test` goes green.
 - [ ] **FCM V1 service-account key**: if the key was uploaded to EAS for the old
       package, re-check it — the key is per Firebase project, so it usually still

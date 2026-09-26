@@ -13,8 +13,8 @@ each one has a check.
 
 | # | Link | State | Check |
 | --- | --- | --- | --- |
-| 1 | **`google-services.json` with `com.MBKConnect`** present in the build | **needs the new file** — the copy in the project still declares the old package | `npm test` → passes when the file matches `android.package` |
-| 2 | **EAS uploads that file** — it is git-ignored, and EAS Build uploads only what is not ignored | **done**: `.easignore` includes it (and `.env`) with `!` entries, asserted by `tests/config/app-config.test.mjs` | EAS build log: no `"google-services.json" is missing` |
+| 1 | **`google-services.json` for Firebase project `mbkconnect`, package `com.MBKConnect`** present in the build | **done in code, file still external**: `app.json` expects `com.MBKConnect`; `scripts/provide-google-services.mjs` verifies `project_id = mbkconnect`, `storage_bucket = mbkconnect.firebasestorage.app`, and the package on every EAS build (§2b) | EAS build log: `verified: Firebase project "mbkconnect", package "com.MBKConnect"` |
+| 2 | **EAS receives that file** — it is git-ignored, and EAS Build uploads only what is not ignored | **done**: local `eas build` uploads it via the `.easignore` `!` entry; any other trigger (dashboard, GitHub) gets it from the `GOOGLE_SERVICES_JSON` project secret through the pre-install hook (§2b). Both paths asserted by `tests/config/app-config.test.mjs` | EAS build log: no `"google-services.json" is missing` |
 | 3 | **App registers a token and stores it** — permission, channel, `getExpoPushTokenAsync`, `set_push_token()` | **done** (client code + function applied). Android 13+ `POST_NOTIFICATIONS` comes from the `expo-notifications` library manifest and merges into the APK | after one launch: `select expo_push_token from profiles where id = '<parent id>';` → non-null |
 | 4 | **FCM V1 credentials on the EAS project** — Expo's push service needs them to reach Android | **not done** (cannot be done from the repository) | EAS → Project → Credentials → Android → *Push notifications* shows an FCM V1 service account |
 | 5 | **The delivery function deployed** — `send-notification`, with JWT verification **off** | **needs redeploy** with the hardened code and `verify_jwt = false` (§4) | Edge Functions → `send-notification` → *Enforce JWT verification* is off; a test insert logs a line |
@@ -185,8 +185,11 @@ the device. Two different files are involved, and only one goes in the repositor
 
 **Get the key (Firebase console):**
 
-1. <https://console.firebase.google.com> → project **mbk-parent-portal** → ⚙️
-   **Project settings** → **Service accounts** tab.
+1. <https://console.firebase.google.com> → project **mbkconnect** → ⚙️
+   **Project settings** → **Service accounts** tab. This is the same Firebase
+   project `google-services.json` must come from (`project_id = mbkconnect`,
+   `storage_bucket = mbkconnect.firebasestorage.app`, Android package
+   `com.MBKConnect`) — do not use a similarly named project.
 2. **Generate new private key** → confirm → a `.json` file downloads. This is the
    FCM V1 key. Treat it like a password: do not email it, do not commit it, and do
    not paste it into chat.
@@ -218,10 +221,51 @@ the trigger or the function. If nothing arrives, the key is the first suspect.
 Notifications reach **physical devices only** (not emulators without Play services),
 and the app asks for permission on first launch — accept it.
 
+### 2b. How EAS gets `google-services.json` (it is never committed)
+
+The file is git-ignored (it holds API keys) but `app.json` points at it, so every
+Android build needs it from somewhere. Two paths, both supported — the second
+exists because the first only works when a human runs `eas build` locally:
+
+1. **Local file.** Run `eas build` from a machine that has the correct
+   `google-services.json` at the project root. `.easignore` carries a
+   `!google-services.json` entry so the upload includes it.
+2. **EAS project secret.** For builds triggered from the dashboard or GitHub,
+   create a secret holding the file's contents (once, from the machine that has
+   the Firebase download):
+
+   ```bash
+   eas secret:create --scope project --name GOOGLE_SERVICES_JSON \
+     --type string --value "$(cat google-services.json)"
+   ```
+
+   A base64 string secret (`GOOGLE_SERVICES_JSON_BASE64`) or a file secret under
+   the same name works too — the hook accepts all three. List and rotate with
+   `eas secret:list` / `eas secret:delete` + re-create; the value itself is never
+   printed anywhere.
+
+Either way, `scripts/provide-google-services.mjs` (wired as `eas-build-pre-install`
+in `package.json`) verifies before the build proceeds:
+
+```text
+project_id = mbkconnect
+storage_bucket = mbkconnect.firebasestorage.app
+package = com.MBKConnect   (read from app.json, so it cannot drift)
+```
+
+A wrong-project or wrong-package file fails the build immediately with a plain
+message instead of deep inside Gradle, and only those non-secret fields are ever
+printed. `npm test` asserts the same three values whenever the file is present
+locally, plus that the hook wiring is intact.
+
 ### Exact order to finish this
 
-1. Replace `google-services.json` at the project root with the new download (package
-   `com.MBKConnect`). Confirm: `npm test`.
+1. Get `google-services.json` from Firebase project **`mbkconnect`** (add an
+   Android app with package `com.MBKConnect` if it is not there yet) and confirm
+   it declares `project_id = mbkconnect` and
+   `storage_bucket = mbkconnect.firebasestorage.app`. Place it at the project
+   root for local builds **and** store it in the `GOOGLE_SERVICES_JSON` EAS
+   secret (§2b) so remote-triggered builds use the same file. Confirm: `npm test`.
 2. `eas credentials` → Android → the project → **Push notifications** → upload the
    FCM V1 service-account JSON. Get it from Firebase → Project settings →
    *Service accounts* → **Generate new private key** (the account needs the

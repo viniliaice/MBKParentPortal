@@ -79,8 +79,12 @@ without checking every switch on activity type.
 - Web is a real target. Anything native-only needs a `Platform.OS` guard.
 
 ## Secrets — hard rules
-`google-services.json` and a Firebase admin private key are committed and not gitignored.
-This is a live incident, not a quirk.
+`google-services.json`, `.env`, and any Firebase admin/service-account key are
+git-ignored and must stay untracked (`.gitignore` + `.easignore`; see
+`docs/security-model.md` §7). EAS builds get `google-services.json` from the
+developer's local file or the `GOOGLE_SERVICES_JSON` project secret — never from
+the repository. The Firebase project is `mbkconnect`, the Android package is
+`com.MBKConnect`.
 - Never open, print, echo, or quote the contents of those files.
 - Never add new credential files to the repo.
 - Never `git add -A`; stage named paths only.
