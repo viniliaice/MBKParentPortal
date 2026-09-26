@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import AuroraBackground from '@/components/AuroraBackground';
+import StudentSelector from '@/components/StudentSelector';
 import { supabase, type Quiz } from '@/lib/supabase';
 import { useApp } from '@/context/AppContext';
 
@@ -99,20 +100,7 @@ export default function QuizListScreen() {
           </View>
         </View>
 
-        <View style={styles.studentRow}>
-          {students.map(s => (
-            <TouchableOpacity
-              key={s.id}
-              style={[styles.studentBtn, selectedStudent === s.id && { borderColor: s.avatarColor, backgroundColor: `${s.avatarColor}22` }]}
-              onPress={() => setSelectedStudent(s.id)}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.studentBtnText, selectedStudent === s.id && { color: s.avatarColor }]}>
-                {s.name.split(' ')[0]}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <StudentSelector students={students} selectedId={selectedStudent} onSelect={setSelectedStudent} />
 
         {loading ? (
           <View style={styles.center}><ActivityIndicator size="large" color="#3D5AFE" /></View>
@@ -239,9 +227,6 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 20, fontWeight: '800', color: '#FFFFFF' },
   historyBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
   studyBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(245,158,11,0.12)', alignItems: 'center', justifyContent: 'center' },
-  studentRow: { flexDirection: 'row', paddingHorizontal: 20, gap: 10, marginBottom: 12 },
-  studentBtn: { flex: 1, paddingVertical: 10, borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.1)', alignItems: 'center' },
-  studentBtnText: { fontSize: 14, fontWeight: '700', color: '#8892B0' },
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16, paddingHorizontal: 4 },
   infoText: { fontSize: 13, color: '#8892B0', fontWeight: '500' },
   sectionTitle: { fontSize: 14, fontWeight: '700', color: '#8892B0', marginBottom: 12, letterSpacing: 0.5, paddingHorizontal: 4 },

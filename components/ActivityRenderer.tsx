@@ -5,37 +5,113 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Activity } from '@/data/learningData';
+import PressableTile from '@/components/PressableTile';
+import ExplorableActivity from '@/components/explorables/ExplorableActivity';
+import ParameterExperiment from '@/components/engine/ParameterExperiment';
+import PhysicsSandbox from '@/components/engine/PhysicsSandbox';
+import CauseEffectExplorer from '@/components/engine/CauseEffectExplorer';
+import BuildChallenge from '@/components/engine/BuildChallenge';
+import GuidedDiscovery from '@/components/engine/GuidedDiscovery';
+import HotspotExplorer from '@/components/engine/HotspotExplorer';
+import PredictionChallenge from '@/components/engine/PredictionChallenge';
+import EngineDragMechanism from '@/components/engine/DragMechanism';
+import SuccessCelebration from '@/components/engine/primitives/SuccessCelebration';
+import {
+  physicsSceneRegistry, physicsTankSceneRegistry, physicsDescribeRegistry, physicsNarrateRegistry,
+  physicsSandboxModelRegistry, physicsSandboxSceneRegistry, physicsSandboxNarrateRegistry,
+} from '@/components/engine/registry/physicsSceneRegistry';
+import { isExploreType } from '@/constants/activityTypes';
+import { playSound } from '@/lib/audio/soundEngine';
+
+/*
+ * ---------------------------------------------------------------------
+ * Premium interactive activity engine — kind -> component mapping.
+ *
+ * The mission brief asked for 15 named activity types (interactiveSimulation,
+ * interactiveDiagram, parameterExperiment, buildChallenge, causeEffectExplorer,
+ * systemBuilder, physicsPlayground, animatedProcess, guidedDiscovery,
+ * predictionChallenge, interactiveTimeline, hotspotExplorer, measurementTool,
+ * dragMechanism, flowSimulation). Several of those names describe the exact
+ * same underlying interaction shape, so rather than building 15 near-duplicate
+ * components, each name resolves to one of 7 real reusable components below:
+ *
+ *   parameterExperiment, interactiveSimulation,
+ *   measurementTool          -> ParameterExperiment  (drag N vars, watch M linearly-derived readouts)
+ *   physicsPlayground        -> PhysicsSandbox        (drag N vars into a REAL continuous simulation loop —
+ *                                                       every variable can influence every other one through
+ *                                                       the model's own physics, not a fixed linear mapping)
+ *   causeEffectExplorer, animatedProcess,
+ *   interactiveTimeline, flowSimulation
+ *                            -> CauseEffectExplorer   (press trigger, watch staged sequence)
+ *   buildChallenge, systemBuilder
+ *                            -> BuildChallenge        (select minimal correct part set)
+ *   guidedDiscovery          -> GuidedDiscovery       (tap-to-reveal fact cards)
+ *   hotspotExplorer,
+ *   interactiveDiagram       -> HotspotExplorer       (tap labelled diagram hotspots)
+ *   predictionChallenge      -> PredictionChallenge   (commit to a guess, then reveal)
+ *   dragMechanism            -> EngineDragMechanism   (drag one part along a track)
+ *
+ * All 15 names remain distinct entries in data/learningData.ts's ActivityType
+ * union and are still individually selectable per-activity in curriculum
+ * content; this file is simply where the reuse happens, exactly as
+ * AGENTS.md's "check every switch on activity type" warning anticipates.
+ * ---------------------------------------------------------------------
+ */
+
+const PARAMETER_EXPERIMENT_TYPES = new Set(['parameterExperiment', 'interactiveSimulation', 'measurementTool']);
+const CAUSE_EFFECT_TYPES = new Set(['causeEffectExplorer', 'animatedProcess', 'interactiveTimeline', 'flowSimulation']);
+const BUILD_TYPES = new Set(['buildChallenge', 'systemBuilder']);
+const HOTSPOT_TYPES = new Set(['hotspotExplorer', 'interactiveDiagram']);
 
 interface Props {
   activity: Activity;
   onCorrect: () => void;
   onIncorrect: () => void;
+  /** used by the engine activity types for their primary accent color; falls back to a neutral cyan. */
+  accentColor?: string;
 }
 
-export default function ActivityRenderer({ activity, onCorrect, onIncorrect }: Props) {
+export default function ActivityRenderer({ activity, onCorrect, onIncorrect, accentColor = '#22D3EE' }: Props) {
   const [submitted, setSubmitted] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
+  const [dragMechanismInteracted, setDragMechanismInteracted] = useState(false);
+  const [celebrationTrigger, setCelebrationTrigger] = useState(0);
 
   const handleResult = (correct: boolean) => {
     setSubmitted(true);
     setIsCorrect(correct);
     if (correct) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      playSound('successChime');
+      setCelebrationTrigger(n => n + 1);
       onCorrect();
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      playSound('mistakeBuzz');
       onIncorrect();
     }
   };
 
   const feedbackAnim = useRef(new Animated.Value(0)).current;
+  const shakeAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     if (submitted) {
       Animated.spring(feedbackAnim, { toValue: 1, friction: 6, tension: 100, useNativeDriver: true }).start();
+      if (!isCorrect) {
+        shakeAnim.setValue(0);
+        Animated.sequence([
+          Animated.timing(shakeAnim, { toValue: 1, duration: 60, useNativeDriver: true }),
+          Animated.timing(shakeAnim, { toValue: -1, duration: 80, useNativeDriver: true }),
+          Animated.timing(shakeAnim, { toValue: 0.6, duration: 80, useNativeDriver: true }),
+          Animated.timing(shakeAnim, { toValue: 0, duration: 80, useNativeDriver: true }),
+        ]).start();
+      }
     } else {
       feedbackAnim.setValue(0);
     }
   }, [submitted]);
+
+  const isEngineNoAnswerType = isExploreType(activity.type);
 
   return (
     <View style={styles.container}>
@@ -53,21 +129,146 @@ export default function ActivityRenderer({ activity, onCorrect, onIncorrect }: P
         ? <TrueFalseActivity activity={activity} submitted={submitted} onSubmit={handleResult} />
         : activity.type === 'writing'
         ? <WritingActivity activity={activity} submitted={submitted} onSubmit={handleResult} />
+        : activity.type === 'explorable'
+        ? <ExplorableActivity activity={activity} submitted={submitted} onSubmit={handleResult} />
+        : PARAMETER_EXPERIMENT_TYPES.has(activity.type) && activity.parameterExperimentConfig
+        ? (
+          <ParameterExperiment
+            config={activity.parameterExperimentConfig}
+            submitted={submitted}
+            onComplete={handleResult}
+            accentColor={accentColor}
+            renderScene={activity.parameterExperimentConfig.sceneKey
+              ? (params) => physicsTankSceneRegistry[activity.parameterExperimentConfig!.sceneKey!]?.(params, accentColor)
+              : undefined}
+            narrate={activity.parameterExperimentConfig.narrateKey
+              ? (params) => physicsNarrateRegistry[activity.parameterExperimentConfig!.narrateKey!]?.(params) ?? ''
+              : undefined}
+          />
+        )
+        : activity.type === 'physicsPlayground' && activity.physicsSandboxConfig
+        ? (
+          <PhysicsSandbox
+            config={activity.physicsSandboxConfig}
+            submitted={submitted}
+            onComplete={handleResult}
+            accentColor={accentColor}
+            model={physicsSandboxModelRegistry[activity.physicsSandboxConfig.modelKey]}
+            renderScene={(state) => physicsSandboxSceneRegistry[activity.physicsSandboxConfig!.sceneKey]?.(state, accentColor)}
+            computeReadout={(state, readoutId) => {
+              const s = state as Record<string, number>;
+              // Sandbox readouts read directly off named fields of the
+              // model's state object (tankPressure, inflowRate, etc.) by
+              // id — the id in data/learningData.ts's PhysicsSandboxReadout
+              // is the state field name itself, keeping the mapping
+              // declarative without a second per-lesson lookup table.
+              return typeof s[readoutId] === 'number' ? (s[readoutId] as number) : 0;
+            }}
+            narrate={activity.physicsSandboxConfig.narrateKey
+              ? (state, inputs) => physicsSandboxNarrateRegistry[activity.physicsSandboxConfig!.narrateKey!]?.(state as any, inputs) ?? ''
+              : undefined}
+          />
+        )
+        : CAUSE_EFFECT_TYPES.has(activity.type) && activity.causeEffectConfig
+        ? (
+          <CauseEffectExplorer
+            config={activity.causeEffectConfig}
+            submitted={submitted}
+            onComplete={handleResult}
+            accentColor={accentColor}
+            renderScene={(sceneProgress) => physicsSceneRegistry[activity.causeEffectConfig!.sceneKey]?.(sceneProgress, accentColor)}
+          />
+        )
+        : BUILD_TYPES.has(activity.type) && activity.buildChallengeConfig
+        ? <BuildChallenge config={activity.buildChallengeConfig} submitted={submitted} onComplete={handleResult} accentColor={accentColor} />
+        : activity.type === 'guidedDiscovery' && activity.guidedDiscoveryConfig
+        ? <GuidedDiscovery config={activity.guidedDiscoveryConfig} submitted={submitted} onComplete={handleResult} accentColor={accentColor} />
+        : HOTSPOT_TYPES.has(activity.type) && activity.hotspotConfig
+        ? (
+          <HotspotExplorer
+            config={activity.hotspotConfig}
+            submitted={submitted}
+            onComplete={handleResult}
+            accentColor={accentColor}
+            renderScene={() => physicsSceneRegistry[activity.hotspotConfig!.sceneKey]?.(100, accentColor)}
+          />
+        )
+        : activity.type === 'predictionChallenge' && activity.predictionConfig
+        ? (
+          <PredictionChallenge
+            config={activity.predictionConfig}
+            submitted={submitted}
+            onComplete={handleResult}
+            accentColor={accentColor}
+            renderScene={activity.predictionConfig.sceneKey
+              ? () => physicsSceneRegistry[activity.predictionConfig!.sceneKey!]?.(100, accentColor)
+              : undefined}
+          />
+        )
+        : activity.type === 'dragMechanism' && activity.dragMechanismConfig
+        ? (
+          <EngineDragMechanism
+            config={activity.dragMechanismConfig}
+            color={accentColor}
+            describe={physicsDescribeRegistry[activity.dragMechanismConfig.describeKey] ?? (() => '')}
+            onPositionChange={() => { if (!dragMechanismInteracted) setDragMechanismInteracted(true); }}
+          />
+        )
         : null}
 
+      {activity.type === 'dragMechanism' && !submitted && (
+        <DragMechanismCompleteButton
+          onComplete={() => handleResult(true)}
+          accentColor={accentColor}
+          enabled={dragMechanismInteracted}
+        />
+      )}
+
       {submitted && (
-        <Animated.View style={[styles.feedback, isCorrect ? styles.feedbackCorrect : styles.feedbackWrong, { opacity: feedbackAnim, transform: [{ scale: feedbackAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }] }]}>
-          <Ionicons name={isCorrect ? 'checkmark-circle' : 'close-circle'} size={22} color={isCorrect ? '#2ECC71' : '#FF5370'} />
+        <Animated.View
+          style={[
+            styles.feedback,
+            isCorrect ? styles.feedbackCorrect : styles.feedbackWrong,
+            {
+              opacity: feedbackAnim,
+              transform: [
+                { scale: feedbackAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) },
+                { translateX: shakeAnim.interpolate({ inputRange: [-1, 1], outputRange: [-8, 8] }) },
+              ],
+            },
+          ]}
+        >
+          {isCorrect ? (
+            <SuccessCelebration trigger={celebrationTrigger} size={22} />
+          ) : (
+            <Ionicons name="close-circle" size={22} color="#FF5370" />
+          )}
           <Text style={[styles.feedbackText, { color: isCorrect ? '#2ECC71' : '#FF5370' }]}>
-            {isCorrect ? 'Correct!' : `The answer is: ${activity.correctAnswer}`}
+            {isCorrect ? (isEngineNoAnswerType ? 'Nice exploring!' : 'Correct!') : `The answer is: ${activity.correctAnswer}`}
           </Text>
         </Animated.View>
       )}
 
-      {!submitted && activity.hint ? (
+      {!submitted && activity.hint && !isEngineNoAnswerType ? (
         <HintButton hint={activity.hint} />
       ) : null}
     </View>
+  );
+}
+
+function DragMechanismCompleteButton({ onComplete, accentColor, enabled }: { onComplete: () => void; accentColor: string; enabled: boolean }) {
+  return (
+    <TouchableOpacity
+      style={[styles.dragMechCompleteBtn, { backgroundColor: enabled ? accentColor : 'rgba(255,255,255,0.08)' }]}
+      onPress={onComplete}
+      disabled={!enabled}
+      activeOpacity={0.85}
+    >
+      <Text style={[styles.dragMechCompleteBtnText, !enabled && styles.dragMechCompleteBtnTextDisabled]}>
+        {enabled ? 'Got it!' : 'Drag the part first'}
+      </Text>
+      {enabled && <Ionicons name="checkmark" size={18} color="#04222A" />}
+    </TouchableOpacity>
   );
 }
 
@@ -92,14 +293,14 @@ function MultiChoiceActivity({ activity, submitted, onSubmit }: {
         if (submitted && opt === correct) { bg = 'rgba(46,204,113,0.18)'; border = '#2ECC71'; }
         else if (submitted && isSelected && opt !== correct) { bg = 'rgba(255,83,112,0.18)'; border = '#FF5370'; }
         return (
-          <TouchableOpacity
+          <PressableTile
             key={opt}
             style={[styles.optionBtn, { backgroundColor: bg, borderColor: border }]}
             onPress={() => tap(opt)}
-            activeOpacity={0.7}
+            disabled={submitted}
           >
             <Text style={styles.optionText}>{opt}</Text>
-          </TouchableOpacity>
+          </PressableTile>
         );
       })}
     </View>
@@ -141,14 +342,14 @@ function FillBlankActivity({ activity, submitted, onSubmit }: {
           if (submitted && opt === correct) { bg = 'rgba(46,204,113,0.18)'; border = '#2ECC71'; }
           else if (submitted && isSelected && opt !== correct) { bg = 'rgba(255,83,112,0.18)'; border = '#FF5370'; }
           return (
-            <TouchableOpacity
+            <PressableTile
               key={opt}
               style={[styles.chipBtn, { backgroundColor: bg, borderColor: border }]}
               onPress={() => tap(opt)}
-              activeOpacity={0.7}
+              disabled={submitted}
             >
               <Text style={styles.chipText}>{opt}</Text>
-            </TouchableOpacity>
+            </PressableTile>
           );
         })}
       </View>
@@ -220,6 +421,13 @@ function MatchPairsActivity({ activity, submitted, onSubmit }: {
   const [selectedLeft, setSelectedLeft] = useState<string | null>(null);
   const [matched, setMatched] = useState<Record<string, string>>({});
   const [wrong, setWrong] = useState<string[]>([]);
+  const wrongTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (wrongTimeoutRef.current) clearTimeout(wrongTimeoutRef.current);
+    };
+  }, []);
 
   const [rightOptions] = useState(() => {
     const arr = pairs.map(p => p.right);
@@ -249,7 +457,7 @@ function MatchPairsActivity({ activity, submitted, onSubmit }: {
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setWrong([selectedLeft, item]);
-      setTimeout(() => { setWrong([]); setSelectedLeft(null); }, 700);
+      wrongTimeoutRef.current = setTimeout(() => { setWrong([]); setSelectedLeft(null); }, 700);
     }
   };
 
@@ -349,14 +557,14 @@ function NumberLineActivity({ activity, submitted, onSubmit }: {
               textColor = '#2ECC71';
             }
             return (
-              <TouchableOpacity
+              <PressableTile
                 key={n}
                 style={[styles.numberNode, { backgroundColor: bg, borderColor }]}
                 onPress={() => tap(n)}
-                activeOpacity={0.7}
+                disabled={submitted}
               >
                 <Text style={[styles.numberText, { color: textColor }]}>{n}</Text>
-              </TouchableOpacity>
+              </PressableTile>
             );
           })}
         </View>
@@ -421,14 +629,14 @@ function WritingActivity({ activity, submitted, onSubmit }: {
           if (submitted && opt === correct) { bg = 'rgba(46,204,113,0.18)'; border = '#2ECC71'; }
           else if (submitted && isSelected && opt !== correct) { bg = 'rgba(255,83,112,0.18)'; border = '#FF5370'; }
           return (
-            <TouchableOpacity
+            <PressableTile
               key={opt}
               style={[styles.optionBtn, { backgroundColor: bg, borderColor: border }]}
               onPress={() => tap(opt)}
-              activeOpacity={0.7}
+              disabled={submitted}
             >
               <Text style={[styles.optionText, { fontFamily: 'monospace', fontSize: 17 }]}>{opt}</Text>
-            </TouchableOpacity>
+            </PressableTile>
           );
         })}
       </View>
@@ -493,4 +701,10 @@ const styles = StyleSheet.create({
   hintBtnText: { color: '#F59E0B', fontSize: 13 },
   hintBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: 'rgba(245,158,11,0.1)', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: 'rgba(245,158,11,0.25)' },
   hintText: { color: '#FCD34D', fontSize: 13, flex: 1 },
+  dragMechCompleteBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingVertical: 14, borderRadius: 14, marginTop: 4,
+  },
+  dragMechCompleteBtnText: { color: '#04222A', fontSize: 15, fontWeight: '800' },
+  dragMechCompleteBtnTextDisabled: { color: '#4A5080' },
 });

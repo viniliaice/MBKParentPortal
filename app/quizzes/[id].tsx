@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import AuroraBackground from '@/components/AuroraBackground';
+import AnimatedProgressBar from '@/components/AnimatedProgressBar';
 import { supabase, type Quiz, type QuizQuestion } from '@/lib/supabase';
 import { shuffleArray } from '@/utils/seededRandom';
 
@@ -236,9 +237,12 @@ export default function TakeQuizScreen() {
           <Text style={styles.counter}>{currentIndex + 1} of {questions.length}</Text>
         </View>
 
-        <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${progress}%` as any }]} />
-        </View>
+        <AnimatedProgressBar
+          progress={progress}
+          color="#3D5AFE"
+          height={3}
+          style={{ marginHorizontal: 20, marginBottom: 12 }}
+        />
 
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20 }}>
           <View style={styles.dotRow}>
@@ -371,8 +375,6 @@ const styles = StyleSheet.create({
   timerUrgent: { backgroundColor: 'rgba(255,83,112,0.15)' },
   timerText: { fontSize: 14, fontWeight: '700', color: '#F59E0B' },
   counter: { fontSize: 13, color: '#8892B0', fontWeight: '500' },
-  progressTrack: { height: 3, backgroundColor: 'rgba(255,255,255,0.08)', marginHorizontal: 20, borderRadius: 2, marginBottom: 12 },
-  progressFill: { height: 3, backgroundColor: '#3D5AFE', borderRadius: 2 },
   dotRow: { flexDirection: 'row', gap: 6, marginBottom: 20, flexWrap: 'wrap' },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.15)' },
   dotActive: { backgroundColor: '#3D5AFE', width: 20, borderRadius: 4 },

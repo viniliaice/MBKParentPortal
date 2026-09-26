@@ -268,6 +268,10 @@ function RevealPanel({ scene, color, visible }: { scene: ConceptScene; color: st
   );
 }
 
+export function hasConceptAnimation(topicId: string): boolean {
+  return topicId in CONCEPTS;
+}
+
 export default function ConceptAnimation({ topicId, topicColor, onComplete, review }: Props) {
   const concept = CONCEPTS[topicId] ?? CONCEPTS.counting;
   const scenes = review ? concept.scenes.slice(0, 1) : concept.scenes;

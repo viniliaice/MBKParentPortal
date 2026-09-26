@@ -12,10 +12,13 @@ export const MASTERY_THRESHOLD = 70;
 
 /**
  * Minimum number of attempts before a lesson can be considered mastered.
- * A single lucky first try should not unlock the next lesson; the student
- * must show consistency across at least this many attempts.
+ * Set to 1 so a single 70%+ pass unlocks the next lesson immediately —
+ * requiring a second attempt read as a bug ("I finished the lesson and the
+ * next one is still locked") rather than a deliberate rule, since nothing
+ * in the UI explained the extra-attempt requirement. Raise this back above
+ * 1 only alongside UI copy that explains it.
  */
-export const MASTERY_MIN_ATTEMPTS = 2;
+export const MASTERY_MIN_ATTEMPTS = 1;
 
 export interface AttemptSummary {
   accuracyPct: number;

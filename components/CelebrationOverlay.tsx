@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -18,6 +18,7 @@ interface Props {
 export default function CelebrationOverlay({ xpGained, badgeName, badgeIcon, correctCount, totalActivities, onContinue, streak, level, dailyBonus }: Props) {
   const scale = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(0)).current;
+  const [isExiting, setIsExiting] = useState(false);
 
   useEffect(() => {
     Animated.parallel([
@@ -25,6 +26,15 @@ export default function CelebrationOverlay({ xpGained, badgeName, badgeIcon, cor
       Animated.timing(opacity, { toValue: 1, duration: 300, useNativeDriver: true }),
     ]).start();
   }, []);
+
+  const handleContinue = () => {
+    if (isExiting) return;
+    setIsExiting(true);
+    Animated.parallel([
+      Animated.timing(scale, { toValue: 0.9, duration: 180, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 0, duration: 180, useNativeDriver: true }),
+    ]).start(() => onContinue());
+  };
 
   const pct = Math.round((correctCount / totalActivities) * 100);
 
@@ -74,7 +84,7 @@ export default function CelebrationOverlay({ xpGained, badgeName, badgeIcon, cor
           </View>
         )}
 
-        <TouchableOpacity style={styles.continueBtn} onPress={onContinue} activeOpacity={0.85}>
+        <TouchableOpacity style={styles.continueBtn} onPress={handleContinue} activeOpacity={0.85} disabled={isExiting}>
           <LinearGradient colors={['#3D5AFE', '#00BCD4']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.gradientBtn}>
             <Text style={styles.continueBtnText}>Continue</Text>
             <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
