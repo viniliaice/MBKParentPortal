@@ -334,11 +334,26 @@ describe('report selectors', { skip }, () => {
     assert.equal(pills.yearKey, '');
 
     // With no results of their own the row still needs a year to hang on: the school's.
-    const withFallback = selectors.monthPillStates([], 'a', '2026-2027');
+    const withFallback = selectors.monthPillStates([], 'a', { fallbackYearKey: '2026-2027' });
     assert.equal(withFallback.yearKey, '2026-2027');
     assert.deepEqual(withFallback.months.map(m => m.hasMarks), Array(12).fill(false));
     assert.equal(withFallback.months[0].year, 2027);
     assert.equal(withFallback.months[8].year, 2026);
+  });
+
+  it('follows the year the screen is already showing', () => {
+    const results = [
+      monthlyResult('a', 'Maths', 80, '2025-10-09T00:00:00.000Z', 'Oct'),
+      monthlyResult('a', 'Maths', 62, '2026-03-12T00:00:00.000Z', 'Mar'),
+    ];
+
+    // Left alone the row covers the newest year; pinned, it covers the year on screen —
+    // which is what the marks screen needs, since there the pills are the control.
+    assert.equal(selectors.monthPillStates(results, 'a').yearKey, '2025-2026');
+    const pinned = selectors.monthPillStates(results, 'a', { yearKey: '2024-2025' });
+    assert.equal(pinned.yearKey, '2024-2025');
+    assert.deepEqual(pinned.months.filter(m => m.hasMarks).map(m => m.label), [],
+      'an earlier year with no marks has nothing to show');
   });
 
   it('calculates each child’s pills independently', () => {

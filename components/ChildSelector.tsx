@@ -16,7 +16,7 @@ import { Avatar } from '@/components/Avatar';
 import { MonthPillRow } from '@/components/MonthPillRow';
 import { useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
-import { monthPillStates, type MonthPillState } from '@/lib/reportSelectors';
+import { monthPillStates } from '@/lib/reportSelectors';
 
 /**
  * The root layout centres every screen in a 720pt column, so a wide browser window must
@@ -32,16 +32,8 @@ interface Props {
   style?: StyleProp<ViewStyle>;
   /** Tighter chips, for the marks screen where the selector sits under a title. */
   dense?: boolean;
-  /** Adds each child's twelve month pills. Off where another month control already sits. */
+  /** Adds each child's month pills — one per month the school has published for them. */
   showMonths?: boolean;
-  /**
-   * Opens a month without leaving the current screen. The marks screen is already on the
-   * report, so it moves its own month rather than navigating to itself.
-   */
-  onSelectMonth?: (studentId: string, month: MonthPillState) => void;
-  /** The month already on screen, ringed on every child it belongs to. */
-  activeMonth?: string;
-  activeYearKey?: string;
 }
 
 /**
@@ -52,14 +44,7 @@ interface Props {
  * With a single child it degrades to a plain identity row: still obvious *who* the
  * screen is about, without a control that has nothing to switch to.
  */
-export function ChildSelector({
-  style,
-  dense,
-  showMonths = false,
-  onSelectMonth,
-  activeMonth,
-  activeYearKey,
-}: Props) {
+export function ChildSelector({ style, dense, showMonths = false }: Props) {
   const { students, selectedStudentId, selectedStudent, setSelectedStudentId, results, academicYears } = useApp();
   const c = useColors();
   const { width: windowWidth } = useWindowDimensions();
@@ -75,7 +60,7 @@ export function ChildSelector({
   // account never borrow a month from each other.
   const pillsByStudent = useMemo(() => {
     if (!showMonths) return null;
-    return new Map(students.map(s => [s.id, monthPillStates(results, s.id, currentYearKey)]));
+    return new Map(students.map(s => [s.id, monthPillStates(results, s.id, { fallbackYearKey: currentYearKey })]));
   }, [showMonths, students, results, currentYearKey]);
 
   const cardWidth = Math.min(windowWidth - SCREEN_GUTTER, CONTENT_MAX_WIDTH - SCREEN_GUTTER);
@@ -104,12 +89,8 @@ export function ChildSelector({
     setSelectedStudentId(id);
   };
 
-  const selectMonth = (studentId: string, month: MonthPillState) => {
+  const selectMonth = (studentId: string, month: { academicMonth: string; yearKey: string }) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    if (onSelectMonth) {
-      onSelectMonth(studentId, month);
-      return;
-    }
     // The report being opened belongs to this child, so the rest of the app follows.
     if (studentId !== selectedStudentId) setSelectedStudentId(studentId);
     router.push({
@@ -142,8 +123,6 @@ export function ChildSelector({
           <MonthPillRow
             months={pills.months}
             onSelect={month => selectMonth(selectedStudent.id, month)}
-            activeMonth={activeMonth}
-            activeYearKey={activeYearKey}
           />
         ) : null}
       </View>
@@ -204,8 +183,6 @@ export function ChildSelector({
               <MonthPillRow
                 months={pills.months}
                 onSelect={month => selectMonth(student.id, month)}
-                activeMonth={activeMonth}
-                activeYearKey={activeYearKey}
               />
             ) : null}
           </View>

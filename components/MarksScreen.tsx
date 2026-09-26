@@ -12,6 +12,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import AuroraBackground from '@/components/AuroraBackground';
 import { Card } from '@/components/Card';
 import { ChildSelector } from '@/components/ChildSelector';
+import { MonthPillRow } from '@/components/MonthPillRow';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { LoadingState } from '@/components/LoadingState';
@@ -35,8 +36,8 @@ import {
   latestMonthWithData,
   monthlyMonthCounts,
   pendingForView,
+  monthPillStates,
   summarisePeriod,
-  type MonthPillState,
   type ReportPeriod,
 } from '@/lib/reportSelectors';
 
@@ -174,17 +175,6 @@ export function MarksScreen({ showBack = false }: Props) {
     setRetrying(false);
   }, [refresh]);
 
-  /**
-   * A month pill pressed on this screen moves the screen instead of navigating to it:
-   * the child, the academic year and the month all come from the pill, and the auto-select
-   * effects below leave them alone because that month has marks behind it.
-   */
-  const onSelectMonth = useCallback((studentId: string, pill: MonthPillState) => {
-    if (students.some(s => s.id === studentId)) setSelectedStudentId(studentId);
-    if (pill.yearKey) setYear(pill.yearKey);
-    setMonth(pill.academicMonth);
-  }, [students, setSelectedStudentId]);
-
   const periodCounts = useMemo(
     () => REPORT_PERIODS.map(p => ({
       key: p.key,
@@ -192,6 +182,16 @@ export function MarksScreen({ showBack = false }: Props) {
       count: filterByPeriod(yearResults, p.key).length,
     })),
     [yearResults],
+  );
+
+  /**
+   * The months of the year on screen that carry marks, as pills. Pinned to `year` rather
+   * than left to pick the newest year, because here they are the control — they have to
+   * follow the year the parent has chosen, not lead it.
+   */
+  const monthPills = useMemo(
+    () => monthPillStates(childResults, childId, { yearKey: year, fallbackYearKey: currentYearKey }),
+    [childResults, childId, year, currentYearKey],
   );
 
   const averageTone = { success: c.accent, warning: c.warning, danger: c.destructive };
@@ -214,15 +214,7 @@ export function MarksScreen({ showBack = false }: Props) {
           onBack={showBack ? () => router.back() : undefined}
         />
 
-        {/* The child cards carry the month control: twelve pills, filled where this
-            child's monthly marks are published, which one is on screen ringed. */}
-        <ChildSelector
-          dense
-          showMonths
-          onSelectMonth={onSelectMonth}
-          activeMonth={month}
-          activeYearKey={year}
-        />
+        <ChildSelector dense />
 
         {loading && students.length === 0 ? (
           <View style={{ marginTop: 16 }}>
@@ -274,6 +266,21 @@ export function MarksScreen({ showBack = false }: Props) {
               value={period}
               onChange={key => { setPeriod(key); setMonth(''); }}
             />
+
+            {/* The month control: one pill per month this child has marks for, the open
+                month filled. Bigger than the dashboard's — here it is what gets tapped. */}
+            {period === 'monthly' ? (
+              <View style={styles.monthRow}>
+                <MonthPillRow
+                  months={monthPills.months}
+                  onSelect={pill => setMonth(pill.academicMonth)}
+                  size="roomy"
+                  selectable
+                  activeMonth={month}
+                  activeYearKey={year}
+                />
+              </View>
+            ) : null}
 
             {displayResults.length > 0 ? (
               <View style={styles.summaryWrap}>
@@ -404,6 +411,7 @@ const styles = StyleSheet.create({
   yearRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, paddingVertical: 8 },
   yearArrow: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   yearLabel: { fontSize: 13.5, fontWeight: '700', minWidth: 150, textAlign: 'center' },
+  monthRow: { paddingHorizontal: 20, marginTop: 14 },
   summaryWrap: { paddingHorizontal: 20, marginTop: 14 },
   summaryCard: { gap: 12 },
   summaryTop: { flexDirection: 'row', alignItems: 'center', gap: 14 },

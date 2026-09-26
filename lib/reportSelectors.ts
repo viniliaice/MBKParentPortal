@@ -204,28 +204,36 @@ export interface MonthPillStates {
   months: MonthPillState[];
 }
 
+export interface MonthPillOptions {
+  /** Pin the row to a year the screen is already showing (the marks screen's year). */
+  yearKey?: string;
+  /** Used when the child has no monthly marks yet, so the row still has a year. */
+  fallbackYearKey?: string;
+}
+
 /**
  * The twelve calendar-month pills for one child: which months of the academic year on
  * screen actually carry published monthly marks.
  *
  * "Published" means `computeMonthlyResults` produced a result for it — the same rule the
  * marks screen uses to offer a month at all — so a month with only half a subject's
- * marks entered stays empty rather than reading as half full. The year is the one
- * `latestPeriodSummary` picks, i.e. the year the dashboard's own "Latest: …" line comes
- * from, so the pills and the month named beside them cannot disagree. A child with no
- * monthly marks at all falls back to the school's current year and lights nothing.
+ * marks entered stays empty rather than reading as half full. Left to itself the year is
+ * the one `latestPeriodSummary` picks, i.e. the year the dashboard's own "Latest: …"
+ * line comes from, so the pills and the month named beside them cannot disagree. A child
+ * with no monthly marks at all falls back to the school's current year and lights nothing.
  */
 export function monthPillStates(
   results: ReportResult[],
   studentId: string,
-  fallbackYearKey = '',
+  options: MonthPillOptions = {},
 ): MonthPillStates {
+  const { yearKey: pinnedYear = '', fallbackYearKey = '' } = options;
   const monthly = filterByPeriod(
     results.filter(r => r.studentId === studentId),
     'monthly',
   ).filter(r => !!r.date);
 
-  const yearKey = latestPeriodSummary(monthly, 'monthly')?.yearKey || fallbackYearKey;
+  const yearKey = pinnedYear || latestPeriodSummary(monthly, 'monthly')?.yearKey || fallbackYearKey;
   const [startYear, endYear] = yearKey.split('-').map(Number);
   const inYear = yearKey ? filterByYear(monthly, yearKey) : [];
 
