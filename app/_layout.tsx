@@ -21,9 +21,11 @@ import {
 } from '@expo-google-fonts/inter';
 import { DancingScript_400Regular, DancingScript_700Bold } from '@expo-google-fonts/dancing-script';
 import { Stack, useRouter, useSegments } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { AppProvider } from '@/context/AppContext';
+import { ThemeProvider, useTheme } from '@/context/ThemeContext';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -52,6 +54,7 @@ function AuthGate() {
 
 function RootLayoutNav() {
   const { user } = useAuth();
+  const { isDark } = useTheme();
   const router = useRouter();
 
   // Foreground presentation + Android channel. Runs once.
@@ -103,6 +106,8 @@ function RootLayoutNav() {
 
   return (
     <>
+      {/* Readable clock and battery in both appearances. */}
+      <StatusBar style={isDark ? 'light' : 'dark'} />
       <AuthGate />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="login" />
@@ -139,19 +144,22 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>
-          <AuthProvider>
-            <AppProvider>
-              <GestureHandlerRootView>
-                <KeyboardProvider>
-                  <RootLayoutNav />
-                </KeyboardProvider>
-              </GestureHandlerRootView>
-            </AppProvider>
-          </AuthProvider>
-        </QueryClientProvider>
-      </ErrorBoundary>
+      {/* The theme sits above the error boundary: the fallback screen is themed too. */}
+      <ThemeProvider>
+        <ErrorBoundary>
+          <QueryClientProvider client={queryClient}>
+            <AuthProvider>
+              <AppProvider>
+                <GestureHandlerRootView>
+                  <KeyboardProvider>
+                    <RootLayoutNav />
+                  </KeyboardProvider>
+                </GestureHandlerRootView>
+              </AppProvider>
+            </AuthProvider>
+          </QueryClientProvider>
+        </ErrorBoundary>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }
