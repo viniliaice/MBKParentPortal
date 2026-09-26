@@ -821,3 +821,51 @@ describe('child month pills', { skip }, () => {
     assert.equal(sep.academicMonth, 'Sep', 'the month a pill opens');
   });
 });
+
+describe('child ordering', { skip }, () => {
+  const children = [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }];
+  const ids = list => selectors.orderStudentsByRecentMarks(children, list, []).map(s => s.id);
+
+  it('leads with the child whose marks were entered most recently', () => {
+    const results = [
+      monthlyResult('b', 'Maths', 80, '2026-09-15', 'Sep'),
+      monthlyResult('a', 'Maths', 70, '2026-10-20', 'Oct'),
+      monthlyResult('a', 'English', 60, '2026-09-10', 'Sep'),
+    ];
+
+    // a's newest entry is October, b's is September, c has nothing at all.
+    assert.deepEqual(ids(results), ['a', 'b', 'c']);
+  });
+
+  it('puts a child with nothing entered last', () => {
+    const results = [monthlyResult('c', 'Maths', 80, '2026-09-15', 'Sep')];
+    assert.deepEqual(ids(results), ['c', 'a', 'b'], 'the school’s order is kept behind it');
+  });
+
+  it('keeps the school order between children entered on the same day', () => {
+    const results = [
+      monthlyResult('a', 'Maths', 80, '2026-09-15', 'Sep'),
+      monthlyResult('b', 'Maths', 70, '2026-09-15', 'Sep'),
+      monthlyResult('c', 'Maths', 75, '2026-10-01', 'Oct'),
+    ];
+    assert.deepEqual(ids(results), ['c', 'a', 'b']);
+  });
+
+  it('counts work that is still being published as entered', () => {
+    const results = [monthlyResult('a', 'Maths', 70, '2026-10-20', 'Oct')];
+    const pending = [{
+      id: 'p-b', studentId: 'b', subject: 'Maths', period: 'monthly', month: 'Nov',
+      date: '2026-11-02', missing: ['quiz'],
+    }];
+
+    // b has no published report, but the school entered its CA more recently than a's.
+    assert.deepEqual(
+      selectors.orderStudentsByRecentMarks(children, results, pending).map(s => s.id),
+      ['b', 'a', 'c'],
+    );
+  });
+
+  it('leaves the list alone when the school has entered nothing for anyone', () => {
+    assert.deepEqual(ids([]), ['a', 'b', 'c']);
+  });
+});

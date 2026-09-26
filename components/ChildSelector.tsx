@@ -16,7 +16,7 @@ import { Avatar } from '@/components/Avatar';
 import { MonthPillRow } from '@/components/MonthPillRow';
 import { useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
-import { monthPillStates } from '@/lib/reportSelectors';
+import { monthPillStates, orderStudentsByRecentMarks } from '@/lib/reportSelectors';
 
 /**
  * The root layout centres every screen in a 720pt column, so a wide browser window must
@@ -34,6 +34,8 @@ interface Props {
   dense?: boolean;
   /** Adds each child's month pills — one per month the school has published for them. */
   showMonths?: boolean;
+  /** Leads with the child the school has most recently entered marks for. */
+  recentFirst?: boolean;
 }
 
 /**
@@ -44,8 +46,11 @@ interface Props {
  * With a single child it degrades to a plain identity row: still obvious *who* the
  * screen is about, without a control that has nothing to switch to.
  */
-export function ChildSelector({ style, dense, showMonths = false }: Props) {
-  const { students, selectedStudentId, selectedStudent, setSelectedStudentId, results, academicYears } = useApp();
+export function ChildSelector({ style, dense, showMonths = false, recentFirst = false }: Props) {
+  const {
+    students, selectedStudentId, selectedStudent, setSelectedStudentId,
+    results, pendingReports, academicYears,
+  } = useApp();
   const c = useColors();
   const { width: windowWidth } = useWindowDimensions();
 
@@ -63,6 +68,12 @@ export function ChildSelector({ style, dense, showMonths = false }: Props) {
     return new Map(students.map(s => [s.id, monthPillStates(results, s.id, { fallbackYearKey: currentYearKey })]));
   }, [showMonths, students, results, currentYearKey]);
 
+  // The card a parent lands on should be the one with something new on it.
+  const ordered = useMemo(
+    () => (recentFirst ? orderStudentsByRecentMarks(students, results, pendingReports) : students),
+    [recentFirst, students, results, pendingReports],
+  );
+
   const cardWidth = Math.min(windowWidth - SCREEN_GUTTER, CONTENT_MAX_WIDTH - SCREEN_GUTTER);
 
   // The month pills belong to the child whose card they sit on, so the card on screen has
@@ -71,17 +82,17 @@ export function ChildSelector({ style, dense, showMonths = false }: Props) {
   const carousel = useRef<ScrollView>(null);
   const hasAligned = useRef(false);
   useEffect(() => {
-    if (students.length < 2) return;
-    const index = students.findIndex(s => s.id === selectedStudentId);
+    if (ordered.length < 2) return;
+    const index = ordered.findIndex(s => s.id === selectedStudentId);
     if (index <= 0) return;
     const frame = requestAnimationFrame(() => {
       carousel.current?.scrollTo({ x: index * (cardWidth + CARD_GAP), animated: hasAligned.current });
       hasAligned.current = true;
     });
     return () => cancelAnimationFrame(frame);
-  }, [selectedStudentId, students, cardWidth]);
+  }, [selectedStudentId, ordered, cardWidth]);
 
-  if (students.length === 0 || !selectedStudent) return null;
+  if (ordered.length === 0 || !selectedStudent) return null;
 
   const switchTo = (id: string) => {
     if (id === selectedStudentId) return;
@@ -104,7 +115,7 @@ export function ChildSelector({ style, dense, showMonths = false }: Props) {
     });
   };
 
-  if (students.length === 1) {
+  if (ordered.length === 1) {
     const pills = pillsByStudent?.get(selectedStudent.id);
 
     return (
@@ -136,7 +147,7 @@ export function ChildSelector({ style, dense, showMonths = false }: Props) {
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={[styles.row, dense && styles.rowDense, style]}
     >
-      {students.map(student => {
+      {ordered.map(student => {
         const selected = student.id === selectedStudent.id;
         const firstName = student.name.split(' ')[0];
         const pills = pillsByStudent?.get(student.id);

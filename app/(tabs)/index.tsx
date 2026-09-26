@@ -184,7 +184,7 @@ export default function HomeScreen() {
 
         {/* Each child card carries its own twelve-month strip: which months of their
             school year have marks published. */}
-        <ChildSelector showMonths style={{ paddingBottom: 4 }} />
+        <ChildSelector showMonths recentFirst style={{ paddingBottom: 4 }} />
 
         {error && students.length === 0 ? (
           <View style={{ marginTop: 16 }}>
