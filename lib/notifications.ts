@@ -180,7 +180,9 @@ export function routeForNotification(data: unknown): string | null {
     case 'new_message':
       return '/(tabs)/messages';
     case 'new_announcement':
-      return '/(tabs)';
+      // Announcements live in the Messages tab, on their own segment: a parent who
+      // taps a notice lands on the notice, not on the dashboard.
+      return '/(tabs)/messages?view=announcements';
     default:
       return null;
   }

@@ -1,11 +1,18 @@
-import { useColorScheme } from 'react-native';
-import colors from '@/constants/colors';
+import colors, { type AppColors } from '@/constants/colors';
+import { useTheme } from '@/context/ThemeContext';
 
-export function useColors() {
-  const scheme = useColorScheme();
+/** The palette keys plus the shared corner radius. */
+export type Colors = AppColors & { radius: number };
+
+/**
+ * Resolves the active palette from the parent's appearance choice (More → Appearance).
+ * Read colours from here — a literal hex in a screen is a bug in the other mode.
+ */
+export function useColors(): Colors {
+  const { scheme } = useTheme();
   // `colors` holds the two palettes plus a shared `radius` number, so the
   // lookup is typed on the palettes rather than on the whole object.
-  const palettes: Record<string, typeof colors.light> = { light: colors.light, dark: colors.dark };
-  const palette = scheme === 'dark' ? palettes.dark : palettes.light;
+  const palettes: Record<string, AppColors> = { light: colors.light, dark: colors.dark };
+  const palette = palettes[scheme];
   return { ...palette, radius: colors.radius };
 }
