@@ -264,10 +264,9 @@ describe('report selectors', { skip }, () => {
     assert.equal(childD.pending.length, 3, 'the full list is still available');
   });
 
-  describe('date handling — date is authoritative for exam month', () => {
-    it('derives month from date regardless of stored month field', () => {
-      // Prompt regression case:
-      // month = "August", date = "2026-09-17" -> Expected: September
+  describe('report-month handling — stored month is authoritative', () => {
+    it('uses the stored report month before the mark-entry date', () => {
+      // Core regression: August marks were entered on 17 September.
       const assessmentA = {
         subject: 'Science',
         score: '20',
@@ -279,32 +278,50 @@ describe('report selectors', { skip }, () => {
         assessmentLabel: 'ATTENDANCE',
         entryState: 'scored',
       };
-      assert.equal(selectors.getExamMonth(assessmentA), 'September');
+      assert.equal(selectors.getExamMonth(assessmentA), 'August');
+      assert.equal(selectors.getAssessmentMonth(assessmentA), 'August');
+      assert.equal(selectors.getExamMonthCode(assessmentA), 'Aug');
+      assert.equal(selectors.monthlyKey(assessmentA), '2026-08');
+      assert.equal(selectors.reportAcademicYearKey(assessmentA), '2025-2026');
 
-      // month = "September", date = "2026-09-17" -> Expected: September
-      const assessmentB = {
-        subject: 'Science',
-        score: '20',
-        total: 20,
-        examType: 'Attendance',
-        month: 'September',
-        status: 'approved',
-        date: '2026-09-17',
-        assessmentLabel: 'ATTENDANCE',
-        entryState: 'scored',
-      };
-      assert.equal(selectors.getExamMonth(assessmentB), 'September');
+      // Stored month wins even when it conflicts with the date in the other direction.
+      assert.equal(selectors.getExamMonth({ month: 'September', date: '2026-08-15' }), 'September');
+      assert.equal(selectors.getExamMonth({ month: 'Aug', date: '2026-09-17' }), 'August');
+    });
 
-      // date = 2026-08-15 -> August
-      assert.equal(selectors.getExamMonth({ month: 'September', date: '2026-08-15' }), 'August');
-      assert.equal(selectors.getExamMonth({ month: 'August', date: '2026-08-15' }), 'August');
+    it('derives the month from date only when the stored report month is absent', () => {
+      assert.equal(selectors.getExamMonth({ month: null, date: '2026-08-15' }), 'August');
+      assert.equal(selectors.getExamMonth({ month: undefined, date: '2026-09-17' }), 'September');
+      assert.equal(selectors.getExamMonth({ month: '', date: '2026-08-15' }), 'August');
+      assert.equal(selectors.getExamMonth({ month: '   ', date: '2026-09-17' }), 'September');
       assert.equal(selectors.getExamMonth('2026-08-15'), 'August');
       assert.equal(selectors.getExamMonth('2026-09-17'), 'September');
     });
 
-    it('falls back to stored month when date is missing or invalid', () => {
+    it('keeps a stored report month when its date is missing or invalid', () => {
       assert.equal(selectors.getExamMonth({ month: 'August', date: '' }), 'August');
       assert.equal(selectors.getExamMonth({ month: 'September', date: 'invalid-date' }), 'September');
+    });
+
+    it('groups CA and quiz rows by their shared target month even when entered in different months', () => {
+      const homework = {
+        studentId: 's1', subject: 'Science', examType: 'Homework', score: 40, total: 40,
+        month: 'August', date: '2026-09-17',
+      };
+      const quiz = {
+        studentId: 's1', subject: 'Science', examType: 'Quiz', score: 60, total: 60,
+        month: 'August', date: '2026-10-02',
+      };
+
+      assert.equal(selectors.monthlyKey(homework), selectors.monthlyKey(quiz));
+      const results = selectors.computeMonthlyResults([homework, quiz]);
+      assert.equal(results.length, 1);
+      assert.equal(results[0].month, 'August');
+      assert.equal(results[0].score, 100);
+      assert.deepEqual(
+        selectors.computePendingReports([homework, quiz]).filter(p => p.period === 'monthly'),
+        [],
+      );
     });
   });
 
@@ -450,47 +467,55 @@ describe('report selectors', { skip }, () => {
   });
 
   describe('attendance regression', () => {
-    it('treats Attendance 20/20 dated 2026-09-17 as CA in September, NOT a standalone 100% exam', () => {
+    it('treats Attendance 20/20 entered on 2026-09-17 as August CA, never a standalone 100% exam', () => {
       const attendanceRecord = {
         studentId: 's1',
         subject: 'Science',
         score: '20',
         total: 20,
         examType: 'Attendance',
-        month: 'August', // Stale month
+        month: 'August',
         status: 'approved',
         date: '2026-09-17',
         assessmentLabel: 'ATTENDANCE',
         entryState: 'scored',
       };
 
-      // 1. Belongs to September based on the date
-      assert.equal(selectors.getExamMonth(attendanceRecord), 'September');
+      // 1. The database report period wins over the entry date.
+      assert.equal(selectors.getExamMonth(attendanceRecord), 'August');
 
-      // 2. Classified as CA
+      // 2. Attendance is CA.
       assert.equal(selectors.classifyAssessment(attendanceRecord), 'ca');
 
-      // 3. Alone without a quiz, does NOT produce a standalone 100% monthly exam
+      // 3. Alone without a quiz, it does NOT produce a standalone 100% monthly exam.
       const resultsAlone = selectors.computeMonthlyResults([attendanceRecord]);
       assert.equal(resultsAlone.length, 0, 'Attendance alone does not produce a 100% monthly result');
 
-      // Reported as pending quiz
       const pending = selectors
         .computePendingReports([attendanceRecord])
         .filter(p => p.period === 'monthly');
       assert.equal(pending.length, 1);
       assert.equal(pending[0].period, 'monthly');
-      assert.equal(pending[0].month, 'September');
+      assert.equal(pending[0].month, 'August');
       assert.deepEqual(pending[0].missing, ['quiz']);
+      assert.equal(
+        selectors.pendingForView(pending, 'monthly', { month: 'Aug', yearKey: '2025-2026' }).length,
+        1,
+      );
+      assert.equal(
+        selectors.pendingForView(pending, 'monthly', { month: 'Sep', yearKey: '2026-2027' }).length,
+        0,
+      );
 
-      // 4. With Quiz, contributes to CA 40%
+      // 4. A quiz in the same stored report month completes the August report and
+      // contributes 60% while Attendance remains part of CA's 40%.
       const quizRecord = {
         studentId: 's1',
         subject: 'Science',
         score: 50,
         total: 60,
         examType: 'Quiz',
-        month: 'September',
+        month: 'August',
         status: 'approved',
         date: '2026-09-25',
         assessmentLabel: 'MT',
@@ -500,9 +525,9 @@ describe('report selectors', { skip }, () => {
       const results = selectors.computeMonthlyResults([attendanceRecord, quizRecord]);
       assert.equal(results.length, 1);
       const res = results[0];
-      assert.equal(res.month, 'September');
+      assert.equal(res.month, 'August');
       assert.equal(res.examType, 'monthly');
-      // CA is 20/20 = 100%. Quiz is 50/60 = 83%. Final = round(100 * 0.4 + 83 * 0.6) = round(40 + 49.8) = 90
+      // CA is 20/20 = 100%. Quiz is 50/60 = 83%. Final = round(100 * 0.4 + 83 * 0.6) = 90.
       assert.equal(res.score, 90);
       assert.equal(res.components[0].weight, 40);
       assert.equal(res.components[0].score, 100);
@@ -511,54 +536,55 @@ describe('report selectors', { skip }, () => {
     });
   });
 
-  describe('monthly filtering by authoritative date', () => {
-    it('ensures August assessments appear under August and September under September', () => {
-      const augRecord = {
+  describe('monthly filtering by authoritative stored month', () => {
+    it('shows August report rows under August even when they were entered in September', () => {
+      const augustRecord = {
         id: 'res-aug',
         studentId: 's1',
         subject: 'Science',
         score: 85,
         total: 100,
         examType: 'monthly',
-        month: 'September', // Stale month in record
-        date: '2026-08-15',
+        month: 'August',
+        date: '2026-09-17',
         components: [],
       };
-      const sepRecord = {
+      const septemberRecord = {
         id: 'res-sep',
         studentId: 's1',
         subject: 'Science',
         score: 78,
         total: 100,
         examType: 'monthly',
-        month: 'August', // Stale month in record
+        month: 'September',
         date: '2026-09-17',
         components: [],
       };
+      const results = [augustRecord, septemberRecord];
 
-      const results = [augRecord, sepRecord];
+      assert.deepEqual(
+        selectors.filterByMonth(results, 'Aug', '2025-2026').map(r => r.id),
+        ['res-aug'],
+      );
+      assert.deepEqual(
+        selectors.filterByMonth(results, 'August', '2025-2026').map(r => r.id),
+        ['res-aug'],
+      );
+      assert.deepEqual(
+        selectors.filterByMonth(results, 'Sep', '2026-2027').map(r => r.id),
+        ['res-sep'],
+      );
 
-      // August filter returns only the August-dated record (even though its month says 'September')
-      const augFiltered = selectors.filterByMonth(results, 'Aug', '2025-2026');
-      assert.deepEqual(augFiltered.map(r => r.id), ['res-aug']);
-
-      // Also works when passed full name 'August'
-      const augustFiltered = selectors.filterByMonth(results, 'August', '2025-2026');
-      assert.deepEqual(augustFiltered.map(r => r.id), ['res-aug']);
-
-      // September filter returns only the September-dated record (even though its month says 'August')
-      const sepFiltered = selectors.filterByMonth(results, 'Sep', '2026-2027');
-      assert.deepEqual(sepFiltered.map(r => r.id), ['res-sep']);
-
-      const septemberFiltered = selectors.filterByMonth(results, 'September', '2026-2027');
-      assert.deepEqual(septemberFiltered.map(r => r.id), ['res-sep']);
+      const counts = selectors.monthlyMonthCounts(results);
+      assert.equal(counts.get('Aug'), 1);
+      assert.equal(counts.get('Sep'), 1);
+      assert.equal(selectors.latestMonthWithData(results), 'Sep');
     });
   });
 
   describe('end-to-end monthly report verification for parent UI', () => {
-    it('verifies exact fields, pending states, and updates between calculation and UI', () => {
-      // Step 1: Database record with stale month
-      // month = "August", date = "2026-09-17"
+    it('keeps a late-entered August report in August through calculation, pending, and UI filtering', () => {
+      // All records belong to the August report, although teachers entered them in September.
       const caRecords = [
         {
           id: 'exam-hw',
@@ -568,7 +594,7 @@ describe('report selectors', { skip }, () => {
           assessmentLabel: 'HW1',
           score: '35',
           total: 40,
-          month: 'August', // Stale
+          month: 'August',
           date: '2026-09-17',
           status: 'approved',
           entryState: 'scored',
@@ -581,7 +607,7 @@ describe('report selectors', { skip }, () => {
           assessmentLabel: 'ATTENDANCE',
           score: 20,
           total: 20,
-          month: 'August', // Stale
+          month: 'August',
           date: '2026-09-17',
           status: 'approved',
           entryState: 'scored',
@@ -594,33 +620,33 @@ describe('report selectors', { skip }, () => {
           assessmentLabel: 'CPW1',
           score: 34,
           total: 40,
-          month: 'August', // Stale
+          month: 'August',
           date: '2026-09-17',
           status: 'approved',
           entryState: 'scored',
         },
       ];
 
-      // Verification: Without quiz, no standalone result is published
-      const resultsBeforeQuiz = selectors.computeMonthlyResults(caRecords);
-      assert.equal(resultsBeforeQuiz.length, 0);
-
-      // Pending state: Quiz is missing
+      // Without a quiz, no standalone result is published and the missing report is August.
+      assert.equal(selectors.computeMonthlyResults(caRecords).length, 0);
       const pendingBefore = selectors
         .computePendingReports(caRecords)
         .filter(p => p.period === 'monthly');
       assert.equal(pendingBefore.length, 1);
-      assert.equal(pendingBefore[0].month, 'September', 'Derived month is September');
+      assert.equal(pendingBefore[0].month, 'August');
       assert.equal(pendingBefore[0].subject, 'Science');
       assert.deepEqual(pendingBefore[0].missing, ['quiz']);
 
-      // UI View Scoping: Pending item appears in September view, NOT August view
-      const inSepView = selectors.pendingForView(pendingBefore, 'monthly', { month: 'Sep', yearKey: '2026-2027' });
-      assert.equal(inSepView.length, 1);
-      const inAugView = selectors.pendingForView(pendingBefore, 'monthly', { month: 'Aug', yearKey: '2025-2026' });
-      assert.equal(inAugView.length, 0);
+      // The pending item appears in its August report view, never the September entry-date view.
+      assert.equal(
+        selectors.pendingForView(pendingBefore, 'monthly', { month: 'Aug', yearKey: '2025-2026' }).length,
+        1,
+      );
+      assert.equal(
+        selectors.pendingForView(pendingBefore, 'monthly', { month: 'Sep', yearKey: '2026-2027' }).length,
+        0,
+      );
 
-      // Step 2: Quiz is entered
       const quizRecord = {
         id: 'exam-qz',
         studentId: 'pupil-1',
@@ -629,60 +655,45 @@ describe('report selectors', { skip }, () => {
         assessmentLabel: 'MT',
         score: 42,
         total: 60,
-        month: 'September',
+        month: 'August',
         date: '2026-09-25',
         status: 'approved',
         entryState: 'scored',
       };
-
       const allRecords = [...caRecords, quizRecord];
 
-      // Verification: Pending resolved
-      const pendingAfter = selectors
-        .computePendingReports(allRecords)
-        .filter(p => p.period === 'monthly');
-      assert.equal(pendingAfter.length, 0);
+      assert.deepEqual(
+        selectors.computePendingReports(allRecords).filter(p => p.period === 'monthly'),
+        [],
+      );
 
-      // Computed Results
       const resultsAfterQuiz = selectors.computeMonthlyResults(allRecords);
       assert.equal(resultsAfterQuiz.length, 1);
       const res = resultsAfterQuiz[0];
-
-      // Month attribution
-      assert.equal(res.month, 'September');
+      assert.equal(res.month, 'August');
       assert.equal(res.subject, 'Science');
 
-      // Final percentage: round(89 * 0.4 + 70 * 0.6) = 78
+      // CA = 89%, Quiz = 70%; final = round(89 * .4 + 70 * .6) = 78.
       assert.equal(res.score, 78);
       assert.equal(res.total, 100);
-
-      // Breakdown components:
-      // CA component: 40% weight, 89% score
       const caComponent = res.components.find(c => c.weight === 40);
       assert.ok(caComponent);
       assert.equal(caComponent.score, 89);
       assert.equal(caComponent.total, 100);
-
-      // Quiz component: 60% weight, 70% score
       const quizComponent = res.components.find(c => c.weight === 60);
       assert.ok(quizComponent);
       assert.equal(quizComponent.score, 70);
       assert.equal(quizComponent.total, 100);
 
-      // UI helper assertions:
-      // Label formatted on SubjectResultCard
-      assert.equal(selectors.formatMonthYear(res.date, res.month), 'Sep 2026');
-      // Grade band
+      // Parent UI helpers use the report period rather than the September entry date.
+      assert.equal(selectors.formatMonthYear(res.date, res.month), 'Aug 2026');
       assert.equal(selectors.gradeFor(res.score, res.total), 'B+');
-      // Month counts and filters for MarksScreen chips
       const counts = selectors.monthlyMonthCounts(resultsAfterQuiz);
-      assert.equal(counts.get('Sep'), 1);
-      assert.equal(counts.get('Aug'), undefined);
-
-      const filteredSep = selectors.filterByMonth(resultsAfterQuiz, 'Sep', '2026-2027');
-      assert.equal(filteredSep.length, 1);
-      const filteredAug = selectors.filterByMonth(resultsAfterQuiz, 'Aug', '2025-2026');
-      assert.equal(filteredAug.length, 0);
+      assert.equal(counts.get('Aug'), 1);
+      assert.equal(counts.get('Sep'), undefined);
+      assert.equal(selectors.filterByYear(resultsAfterQuiz, '2025-2026').length, 1);
+      assert.equal(selectors.filterByMonth(resultsAfterQuiz, 'Aug', '2025-2026').length, 1);
+      assert.equal(selectors.filterByMonth(resultsAfterQuiz, 'Sep', '2026-2027').length, 0);
     });
   });
 });

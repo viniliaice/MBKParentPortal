@@ -15,9 +15,10 @@
  * - Quiz / Monthly Test = 60%
  * - Final Monthly Result = normalized CA × 40% + Quiz × 60%
  *
- * Date-based month determination:
- * - The actual assessment `date` is the authoritative source for the exam month.
- * - A stale or incorrect `month` field in the database does not override `date`.
+ * Report-period month determination:
+ * - `exams.month` is the academic report period and is authoritative when present.
+ * - `date` records when marks were conducted or entered. It is only used to infer a
+ *   month for legacy rows with no stored report period, and to supply a year.
  */
 
 export type ReportPeriod = 'monthly' | 'midterm' | 'final';
@@ -162,60 +163,107 @@ export function getCalendarMonthIndex(monthLabel: string | null | undefined): nu
   return -1;
 }
 
+type MonthBearingRecord = { date?: string | null; month?: string | null };
+
+/** Return a trimmed non-empty database value, or an empty string for blank values. */
+function nonEmptyMonth(value: string | null | undefined): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+/** Keep stored month labels canonical for known calendar months without discarding unknown values. */
+function normalizeMonthLabel(value: string | null | undefined): string {
+  const month = nonEmptyMonth(value);
+  if (!month) return '';
+  const monthIndex = getCalendarMonthIndex(month);
+  return monthIndex >= 0 ? FULL_MONTH_NAMES[monthIndex] : month;
+}
+
 /**
- * Authoritatively determine the calendar month name for an assessment from its actual date.
- * If the date is missing or invalid, falls back to the stored month field.
+ * Determine an assessment's academic report month.
  *
- * For example:
- *   date = "2026-08-15", month = "September" -> "August"
- *   date = "2026-09-17", month = "August"    -> "September"
+ * `exams.month` is assigned by the school as the report period, so a non-empty stored
+ * value always wins over `date`. Date is intentionally only a legacy fallback for rows
+ * without a report month. For example, `{ month: 'August', date: '2026-09-17' }`
+ * belongs to the August report, not September.
  */
 export function getExamMonth(
-  assessmentOrDate: { date?: string | null; month?: string | null } | string | null | undefined,
+  assessmentOrDate: MonthBearingRecord | string | null | undefined,
   fallbackMonth?: string | null,
 ): string {
-  if (!assessmentOrDate) return fallbackMonth || '';
+  if (assessmentOrDate && typeof assessmentOrDate === 'object') {
+    const storedMonth = normalizeMonthLabel(assessmentOrDate.month);
+    if (storedMonth) return storedMonth;
 
-  let dateStr: string | null = null;
-  let fallback: string = fallbackMonth || '';
+    const dateParts = parseDateParts(assessmentOrDate.date);
+    if (dateParts) return FULL_MONTH_NAMES[dateParts.monthIndex];
 
-  if (typeof assessmentOrDate === 'object') {
-    dateStr = assessmentOrDate.date || null;
-    if (!fallback && assessmentOrDate.month) {
-      fallback = assessmentOrDate.month;
-    }
-  } else if (typeof assessmentOrDate === 'string') {
-    dateStr = assessmentOrDate;
+    return normalizeMonthLabel(fallbackMonth);
   }
 
-  if (dateStr) {
-    const parts = parseDateParts(dateStr);
-    if (parts) {
-      return FULL_MONTH_NAMES[parts.monthIndex];
-    }
+  if (typeof assessmentOrDate === 'string') {
+    const dateParts = parseDateParts(assessmentOrDate);
+    if (dateParts) return FULL_MONTH_NAMES[dateParts.monthIndex];
   }
 
-  if (fallback) {
-    const calIdx = getCalendarMonthIndex(fallback);
-    if (calIdx >= 0) {
-      return FULL_MONTH_NAMES[calIdx];
-    }
-    return fallback;
-  }
-
-  return '';
+  return normalizeMonthLabel(fallbackMonth);
 }
 
 export const getAssessmentMonth = getExamMonth;
 
-/** The 3-letter month code (e.g. 'Aug', 'Sep') derived from an assessment date. */
+/** The 3-letter report-month code (e.g. 'Aug', 'Sep') for an assessment. */
 export function getExamMonthCode(
-  assessmentOrDate: { date?: string | null; month?: string | null } | string | null | undefined,
+  assessmentOrDate: MonthBearingRecord | string | null | undefined,
   fallbackMonth?: string | null,
 ): string {
   const full = getExamMonth(assessmentOrDate, fallbackMonth);
   const idx = getCalendarMonthIndex(full);
   return idx >= 0 ? MONTH_NAMES[idx] : '';
+}
+
+/**
+ * Calendar parts for the report period rather than the mark-entry date.
+ *
+ * `month` has no year, so the entered date supplies one. When a report month is later
+ * in the calendar than its entry month (for example December entered in January), it
+ * belongs to the preceding calendar year. This keeps late-entered reports in the
+ * academic year in which the marks belong.
+ */
+export function reportPeriodParts(
+  assessmentOrDate: MonthBearingRecord | string | null | undefined,
+  fallbackMonth?: string | null,
+): { year: number; monthIndex: number } | null {
+  const monthName = getAssessmentMonth(assessmentOrDate, fallbackMonth);
+  const monthIndex = getCalendarMonthIndex(monthName);
+  if (monthIndex < 0) return null;
+
+  const dateStr = assessmentOrDate && typeof assessmentOrDate === 'object'
+    ? assessmentOrDate.date
+    : typeof assessmentOrDate === 'string' ? assessmentOrDate : null;
+  const enteredOn = parseDateParts(dateStr);
+  if (!enteredOn) return null;
+
+  const storedMonth = assessmentOrDate && typeof assessmentOrDate === 'object'
+    ? nonEmptyMonth(assessmentOrDate.month)
+    : '';
+  const year = storedMonth && monthIndex > enteredOn.monthIndex
+    ? enteredOn.year - 1
+    : enteredOn.year;
+
+  return { year, monthIndex };
+}
+
+/**
+ * A stable report-period key for monthly grouping. It deliberately uses the stored
+ * target month rather than the date's month, while retaining a year when a date exists.
+ */
+export function monthlyKey(
+  assessment: MonthBearingRecord,
+): string {
+  const period = reportPeriodParts(assessment);
+  if (period) return `${period.year}-${String(period.monthIndex + 1).padStart(2, '0')}`;
+
+  const monthIndex = getCalendarMonthIndex(getAssessmentMonth(assessment));
+  return monthIndex >= 0 ? MONTH_NAMES[monthIndex] : getAssessmentMonth(assessment).toLowerCase();
 }
 
 export type AssessmentClassification = 'ca' | 'quiz' | 'term' | 'other';
@@ -308,24 +356,51 @@ export function gradeColorFor(
   return colors.danger;
 }
 
-/** 'Sep 2025' from a report's date, falling back to its stored month code. */
+/**
+ * A display label for a report period. When a report month is supplied, it is the
+ * displayed month; `date` is only used to fill in its year.
+ */
 export function formatMonthYear(dateStr: string, monthCode?: string): string {
-  if (dateStr) {
-    const parts = parseDateParts(dateStr);
-    if (parts) {
-      return `${MONTH_NAMES[parts.monthIndex]} ${parts.year}`;
-    }
+  const storedMonth = normalizeMonthLabel(monthCode);
+  const monthIndex = getCalendarMonthIndex(storedMonth);
+  const period = storedMonth ? reportPeriodParts({ date: dateStr, month: storedMonth }) : null;
+
+  if (monthIndex >= 0) {
+    const year = period?.year ?? parseDateParts(dateStr)?.year;
+    return `${MONTH_NAMES[monthIndex]}${year === undefined ? '' : ` ${year}`}`;
   }
-  const calIdx = getCalendarMonthIndex(monthCode ?? '');
-  return calIdx >= 0 ? `${MONTH_NAMES[calIdx]}` : '';
+
+  if (storedMonth) {
+    const year = parseDateParts(dateStr)?.year;
+    return `${storedMonth}${year === undefined ? '' : ` ${year}`}`;
+  }
+
+  const dateParts = parseDateParts(dateStr);
+  return dateParts ? `${MONTH_NAMES[dateParts.monthIndex]} ${dateParts.year}` : '';
 }
 
 /** '2025-2026' — the academic year a date belongs to (the year rolls over in September). */
 export function academicYearKey(dateStr: string): string {
   const parts = parseDateParts(dateStr);
   if (!parts) return '';
-  const { year, monthIndex } = parts;
-  return monthIndex >= 8 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
+  return academicYearKeyFromParts(parts);
+}
+
+function academicYearKeyFromParts(parts: { year: number; monthIndex: number }): string {
+  return parts.monthIndex >= 8
+    ? `${parts.year}-${parts.year + 1}`
+    : `${parts.year - 1}-${parts.year}`;
+}
+
+/**
+ * Academic year for an assessment's report period. Monthly rows use the stored report
+ * month; rows without one (including term reports) retain the date-based behavior.
+ */
+export function reportAcademicYearKey(
+  assessmentOrDate: MonthBearingRecord | string | null | undefined,
+): string {
+  const period = reportPeriodParts(assessmentOrDate);
+  return period ? academicYearKeyFromParts(period) : '';
 }
 
 /** The academic-year keys to offer: those with results, plus anything the school lists. */
@@ -342,7 +417,7 @@ export function isPeriod(value: string | undefined | null): value is ReportPerio
 
 export function filterByYear<T extends ReportResult>(results: T[], yearKey: string): T[] {
   if (!yearKey) return results;
-  return results.filter(r => r.date && academicYearKey(r.date) === yearKey);
+  return results.filter(r => reportAcademicYearKey(r) === yearKey);
 }
 
 export function filterByPeriod<T extends ReportResult>(results: T[], period: ReportPeriod): T[] {
@@ -355,52 +430,46 @@ export function academicMonthLabel(calendarMonthIndex: number): string {
   return ACADEMIC_YEAR_MONTHS[calendarMonthIndex >= 8 ? calendarMonthIndex - 8 : calendarMonthIndex + 4];
 }
 
-/** How many monthly results each academic month holds (months with none are omitted). */
+/** How many monthly results each academic report month holds (months with none are omitted). */
 export function monthlyMonthCounts(results: ReportResult[]): Map<string, number> {
   const map = new Map<string, number>();
   for (const r of results) {
-    if (r.examType !== 'monthly' || !r.date) continue;
-    const parts = parseDateParts(r.date);
-    if (!parts) continue;
-    const label = academicMonthLabel(parts.monthIndex);
+    if (r.examType !== 'monthly') continue;
+    const monthIndex = getCalendarMonthIndex(getAssessmentMonth(r));
+    if (monthIndex < 0) continue;
+    const label = academicMonthLabel(monthIndex);
     map.set(label, (map.get(label) ?? 0) + 1);
   }
   return map;
 }
 
-/** The most recent academic month that has monthly results, or null. */
+/** The latest academic report month that has monthly results, or null. */
 export function latestMonthWithData(results: ReportResult[]): string | null {
-  let latestDate = '';
+  let latestKey = '';
   let latestLabel: string | null = null;
   for (const r of results) {
-    if (r.examType !== 'monthly' || !r.date) continue;
-    if (r.date > latestDate) {
-      latestDate = r.date;
-      const parts = parseDateParts(r.date);
-      if (parts) {
-        latestLabel = academicMonthLabel(parts.monthIndex);
-      }
+    if (r.examType !== 'monthly') continue;
+    const label = getExamMonthCode(r);
+    if (!label) continue;
+    const key = monthlyKey(r);
+    if (key > latestKey) {
+      latestKey = key;
+      latestLabel = label;
     }
   }
   return latestLabel;
 }
 
-/** Monthly results belonging to one academic month inside one academic year. Uses date as authoritative. */
+/** Monthly results belonging to one report month inside one academic year. */
 export function filterByMonth(results: ReportResult[], monthLabel: string, yearKey: string): ReportResult[] {
-  const calendarMonth = getCalendarMonthIndex(monthLabel);
-  if (calendarMonth < 0) return [];
-  const acadIdx = calendarMonth >= 8 ? calendarMonth - 8 : calendarMonth + 4;
-  const [startYear, endYear] = yearKey ? yearKey.split('-') : ['', ''];
-  // Sep–Dec sit in the first year of the academic year; Jan–Aug in the second.
-  const calendarYear = yearKey
-    ? Number(acadIdx >= 4 ? endYear : startYear)
-    : null;
+  const targetCalendarMonth = getCalendarMonthIndex(monthLabel);
+  if (targetCalendarMonth < 0) return [];
 
   return results.filter(r => {
-    if (r.examType !== 'monthly' || !r.date) return false;
-    const parts = parseDateParts(r.date);
-    if (!parts || parts.monthIndex !== calendarMonth) return false;
-    return calendarYear === null || Number.isNaN(calendarYear) || parts.year === calendarYear;
+    if (r.examType !== 'monthly') return false;
+    const reportMonth = getCalendarMonthIndex(getAssessmentMonth(r));
+    if (reportMonth !== targetCalendarMonth) return false;
+    return !yearKey || reportAcademicYearKey(r) === yearKey;
   });
 }
 
@@ -462,7 +531,7 @@ export function latestPeriodSummary(results: ReportResult[], period: ReportPerio
   if (all.length === 0) return null;
 
   const newestYear = all.reduce((newest, r) => {
-    const key = academicYearKey(r.date);
+    const key = reportAcademicYearKey(r);
     return key > newest ? key : newest;
   }, '');
   const inYear = filterByYear(all, newestYear);
@@ -559,7 +628,8 @@ export function calculateMonthlyScore(
 
 /**
  * Computes monthly results for all students and subjects from raw assessment rows.
- * Authoritative month is derived from each assessment's `date`.
+ * Rows are grouped by their stored academic report month; `date` is never allowed to
+ * move an August report into September merely because it was entered late.
  */
 export function computeMonthlyResults(
   exams: ExamRow[],
@@ -574,24 +644,18 @@ export function computeMonthlyResults(
 
     const classification = classifyAssessment(e);
     if (classification === 'ca' || classification === 'quiz') {
-      const parts = parseDateParts(e.date);
-      const monthName = getExamMonth(e);
-      // Group by student, subject, and authoritative calendar month/year
-      const yearMonthKey = parts
-        ? `${parts.year}-${String(parts.monthIndex + 1).padStart(2, '0')}`
-        : monthName;
-      const key = `${e.studentId}||${e.subject}||${yearMonthKey}`;
+      const key = `${e.studentId}||${e.subject}||${monthlyKey(e)}`;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(e as ExamRow);
     }
   }
 
   for (const [key, group] of groups) {
-    const [studentId, subject] = key.split('||');
+    const [studentId, subject, periodKey] = key.split('||');
     const calc = calculateMonthlyScore(group);
     if (!calc) continue;
 
-    const monthName = getExamMonth(group[0]);
+    const monthName = getAssessmentMonth(group[0]);
     const sortedDates = group
       .map(e => e.date)
       .filter(Boolean)
@@ -599,7 +663,7 @@ export function computeMonthlyResults(
     const resultDate = sortedDates[0] || group[0].date;
 
     results.push({
-      id: `monthly-${studentId}-${subject}-${monthName}`,
+      id: `monthly-${studentId}-${subject}-${periodKey}`,
       studentId,
       subject,
       score: calc.finalScore,
@@ -715,12 +779,7 @@ export function computePendingReports(exams: ExamRow[]): PendingReport[] {
 
     const classification = classifyAssessment(e);
     if (classification === 'ca' || classification === 'quiz') {
-      const parts = parseDateParts(e.date);
-      const monthName = getExamMonth(e);
-      const yearMonthKey = parts
-        ? `${parts.year}-${String(parts.monthIndex + 1).padStart(2, '0')}`
-        : monthName;
-      const key = `${e.studentId}||${e.subject}||${yearMonthKey}`;
+      const key = `${e.studentId}||${e.subject}||${monthlyKey(e)}`;
       if (!monthly.has(key)) monthly.set(key, []);
       monthly.get(key)!.push(e);
     }
@@ -735,12 +794,12 @@ export function computePendingReports(exams: ExamRow[]): PendingReport[] {
   }
 
   for (const [key, group] of monthly) {
-    const [studentId, subject] = key.split('||');
+    const [studentId, subject, periodKey] = key.split('||');
     const hasCA = group.some(e => classifyAssessment(e) === 'ca');
     const hasQuiz = group.some(e => classifyAssessment(e) === 'quiz');
     if (hasCA && hasQuiz) continue;
 
-    const monthName = getExamMonth(group[0]);
+    const monthName = getAssessmentMonth(group[0]);
     const sortedDates = group
       .map(e => e.date)
       .filter(Boolean)
@@ -748,7 +807,7 @@ export function computePendingReports(exams: ExamRow[]): PendingReport[] {
     const resultDate = sortedDates[0] || group[0].date;
 
     pending.push({
-      id: `pending-monthly-${studentId}-${subject}-${monthName}`,
+      id: `pending-monthly-${studentId}-${subject}-${periodKey}`,
       studentId,
       subject,
       period: 'monthly',
@@ -793,8 +852,8 @@ export function computePendingReports(exams: ExamRow[]): PendingReport[] {
 }
 
 /**
- * The pending reports that belong to one view of the marks screen.
- * Scoping is based on assessment date rather than unverified stored month strings.
+ * The pending reports that belong to one view of the marks screen. Monthly views are
+ * scoped by the report period stored on the assessment, not by when it was entered.
  */
 export function pendingForView(
   pending: PendingReport[],
@@ -802,18 +861,20 @@ export function pendingForView(
   options: { month?: string; yearKey?: string } = {},
 ): PendingReport[] {
   const { month = '', yearKey = '' } = options;
+  const targetCalendarMonth = month ? getCalendarMonthIndex(month) : -1;
+  if (month && targetCalendarMonth < 0) return [];
 
   return pending.filter(item => {
     if (item.period !== period) return false;
-    if (!item.date) return true;
-    if (yearKey && academicYearKey(item.date) !== yearKey) return false;
-    if (period === 'monthly' && month) {
-      const parts = parseDateParts(item.date);
-      if (!parts) return false;
-      const targetCalMonth = getCalendarMonthIndex(month);
-      return parts.monthIndex === targetCalMonth;
+
+    if (period === 'monthly') {
+      if (month && getCalendarMonthIndex(getAssessmentMonth(item)) !== targetCalendarMonth) {
+        return false;
+      }
+      return !yearKey || !item.date || reportAcademicYearKey(item) === yearKey;
     }
-    return true;
+
+    return !yearKey || !item.date || academicYearKey(item.date) === yearKey;
   });
 }
 
@@ -861,14 +922,21 @@ export function summariseChild(
 
   if (own.length === 0) return empty;
 
-  const dated = own.filter(r => r.date);
-  const latest = dated.length > 0
-    ? dated.reduce((a, b) => (b.date > a.date ? b : a))
-    : own[0];
+  const reportOrderKey = (result: ReportResult): string => {
+    if (result.examType === 'monthly') {
+      const reportPeriod = reportPeriodParts(result);
+      if (reportPeriod) {
+        return `${reportPeriod.year}-${String(reportPeriod.monthIndex + 1).padStart(2, '0')}-${result.date}`;
+      }
+    }
+    return result.date || '';
+  };
+  const latest = own.reduce((newest, result) => (
+    reportOrderKey(result) > reportOrderKey(newest) ? result : newest
+  ));
   const period = isPeriod(latest.examType) ? latest.examType : 'monthly';
-  const parts = parseDateParts(latest.date);
-  const month = period === 'monthly' && parts ? academicMonthLabel(parts.monthIndex) : '';
-  const yearKey = academicYearKey(latest.date);
+  const month = period === 'monthly' ? getExamMonthCode(latest) : '';
+  const yearKey = reportAcademicYearKey(latest);
 
   const periodResults = period === 'monthly'
     ? filterByMonth(filterByPeriod(own, 'monthly'), month, yearKey)
