@@ -3,16 +3,16 @@ type: Configuration
 title: Platform UI
 description: Platform-specific rendering branches for iOS, Android, and Web.
 tags: [ui, platform]
-timestamp: 2026-07-24T14:00:00Z
+timestamp: 2026-09-25T00:00:00Z
 ---
 
 # Tab bar
 
 | Platform | Background |
 |----------|-----------|
-| iOS | `BlurView` with `intensity={80}` and `tint="dark"` |
-| Android | Plain `#0B1026` background |
-| Web | Unstyled (no background view rendered) |
+| iOS | `BlurView` with `intensity={80}` and `tint` following the theme |
+| Android | Solid `colors.tabBar` |
+| Web | Solid `colors.tabBar` (84pt tall) |
 
 # Icons
 
@@ -31,6 +31,6 @@ component. On web it renders a plain `ScrollView`; on native it uses
 
 # Theme
 
-Dark-only (`userInterfaceStyle: "dark"` in `app.json`). The color palette in
-`constants/colors.ts` has identical light and dark exports — always read from
-there, never hardcode hex values.
+Light, dark or system, chosen in More → Appearance and remembered on the device; the
+palettes and the rules live in [Theme](/app/theme.md). Always read colours from
+`useColors()` — never hardcode hex values.

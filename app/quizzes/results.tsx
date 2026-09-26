@@ -1,19 +1,19 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, ActivityIndicator,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as Speech from 'expo-speech';
 import AuroraBackground from '@/components/AuroraBackground';
+import { ScreenHeader } from '@/components/ScreenHeader';
 import { supabase, type QuizAttempt, type Quiz, type QuizQuestion, type QuizAnswer } from '@/lib/supabase';
+import { useColors, type Colors } from '@/hooks/useColors';
 
 export default function QuizResultsScreen() {
   const { id: attemptId } = useLocalSearchParams<{ id: string }>();
-  const insets = useSafeAreaInsets();
-  const topPad = Platform.OS === 'web' ? 67 : insets.top;
+  const c = useColors();
+  const styles = useMemo(() => makeStyles(c), [c]);
 
   const [attempt, setAttempt] = useState<QuizAttempt | null>(null);
   const [quiz, setQuiz] = useState<Quiz | null>(null);
@@ -64,8 +64,8 @@ export default function QuizResultsScreen() {
             .order('orderIndex', { ascending: true });
           if (qqData) setQuestions(qqData as QuizQuestion[]);
         }
-      } catch (e) {
-        console.error('Failed to load attempt', e);
+      } catch {
+        // The empty state below covers a missing or unreadable attempt.
       }
       setLoading(false);
     })();
@@ -74,7 +74,7 @@ export default function QuizResultsScreen() {
   if (loading) {
     return (
       <AuroraBackground>
-        <View style={styles.center}><ActivityIndicator size="large" color="#3D5AFE" /></View>
+        <View style={styles.center}><ActivityIndicator size="large" color={c.primary} /></View>
       </AuroraBackground>
     );
   }
@@ -83,10 +83,10 @@ export default function QuizResultsScreen() {
     return (
       <AuroraBackground>
         <View style={styles.center}>
-          <Ionicons name="alert-circle-outline" size={36} color="#4A5080" />
-          <Text style={{ color: '#8892B0', marginTop: 12 }}>Attempt not found</Text>
-          <TouchableOpacity style={styles.backHomeBtn} onPress={() => router.back()}>
-            <Text style={{ color: '#3D5AFE', fontWeight: '600' }}>Go Back</Text>
+          <Ionicons name="alert-circle-outline" size={36} color={c.textDim} />
+          <Text style={{ color: c.textSecondary, marginTop: 12 }}>Attempt not found</Text>
+          <TouchableOpacity style={[styles.backHomeBtn, { backgroundColor: c.primarySoft }]} onPress={() => router.back()} accessibilityRole="button">
+            <Text style={{ color: c.primary, fontWeight: '600' }}>Go back</Text>
           </TouchableOpacity>
         </View>
       </AuroraBackground>
@@ -97,31 +97,21 @@ export default function QuizResultsScreen() {
     ? Math.round((attempt.totalEarned / attempt.totalPossible) * 100)
     : 0;
 
-  const getGradeColor = (p: number) => {
-    if (p >= 80) return '#2ECC71';
-    if (p >= 60) return '#F59E0B';
-    return '#FF5370';
-  };
-
-  const gradeColor = getGradeColor(pct);
+  const gradeColor = pct >= 80 ? c.accent : pct >= 60 ? c.warning : c.destructive;
 
   if (!quiz.showResults) {
     return (
       <AuroraBackground>
         <View style={{ flex: 1 }}>
-          <View style={[styles.header, { paddingTop: topPad + 12 }]}>
-            <TouchableOpacity onPress={() => router.dismissAll()} style={styles.backBtn}>
-              <Ionicons name="close" size={22} color="#FFFFFF" />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>Quiz Submitted</Text>
-            <View style={{ width: 36 }} />
-          </View>
+          <ScreenHeader title="Quiz submitted" onBack={() => router.dismissAll()} />
           <View style={styles.center}>
-            <Ionicons name="checkmark-circle" size={64} color="#2ECC71" />
-            <Text style={styles.submittedTitle}>Submitted!</Text>
-            <Text style={styles.submittedSub}>Your quiz has been submitted successfully. Results will be available once graded.</Text>
-            <TouchableOpacity style={styles.returnBtn} onPress={() => router.navigate('/quizzes')}>
-              <Text style={styles.returnBtnText}>Return to Quizzes</Text>
+            <Ionicons name="checkmark-circle" size={64} color={c.accent} />
+            <Text style={[styles.submittedTitle, { color: c.foreground }]}>Submitted!</Text>
+            <Text style={[styles.submittedSub, { color: c.textSecondary }]}>
+              Your quiz has been submitted successfully. Results will be available once graded.
+            </Text>
+            <TouchableOpacity style={[styles.returnBtn, { backgroundColor: c.primarySoft }]} onPress={() => router.navigate('/quizzes')} accessibilityRole="button">
+              <Text style={[styles.returnBtnText, { color: c.primary }]}>Return to quizzes</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -132,29 +122,21 @@ export default function QuizResultsScreen() {
   return (
     <AuroraBackground>
       <View style={{ flex: 1 }}>
-        <View style={[styles.header, { paddingTop: topPad + 12 }]}>
-          <TouchableOpacity onPress={() => router.dismissAll()} style={styles.backBtn}>
-            <Ionicons name="close" size={22} color="#FFFFFF" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle} numberOfLines={1}>Results</Text>
-          <View style={{ width: 36 }} />
-        </View>
+        <ScreenHeader title="Results" onBack={() => router.dismissAll()} />
 
-        <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: Platform.OS === 'web' ? 34 : 20 }}>
-          <LinearGradient
-            colors={[gradeColor, `${gradeColor}88`]}
-            style={styles.scoreCard}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <Text style={styles.scoreLabel}>{quiz.title}</Text>
+        <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
+          <View style={[styles.scoreCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+            <Text style={[styles.scoreLabel, { color: c.textSecondary }]}>{quiz.title}</Text>
             <Text style={[styles.scoreValue, { color: gradeColor }]}>{pct}%</Text>
-            <Text style={styles.scoreDetail}>
+            <View style={[styles.scoreBar, { backgroundColor: c.surfaceSunken }]}>
+              <View style={[styles.scoreBarFill, { width: `${Math.min(pct, 100)}%` as never, backgroundColor: gradeColor }]} />
+            </View>
+            <Text style={[styles.scoreDetail, { color: c.textBody }]}>
               {attempt.totalEarned} / {attempt.totalPossible} points
             </Text>
-          </LinearGradient>
+          </View>
 
-          <Text style={styles.sectionTitle}>Question Review</Text>
+          <Text style={[styles.sectionTitle, { color: c.textSecondary }]}>Question review</Text>
 
           {questions.map((q, i) => {
             const answersData: QuizAnswer[] = Array.isArray(attempt.answers) ? attempt.answers : [];
@@ -164,86 +146,88 @@ export default function QuizResultsScreen() {
             const isWrong = ans?.isCorrect === false;
             const pending = ans?.isCorrect === null;
 
-            let statusColor = '#8892B0';
+            let statusColor = c.textSecondary;
             let statusIcon: keyof typeof Ionicons.glyphMap = 'remove-outline';
             let statusLabel = 'Not answered';
-            if (isCorrect) { statusColor = '#2ECC71'; statusIcon = 'checkmark-circle'; statusLabel = 'Correct'; }
-            else if (isWrong) { statusColor = '#FF5370'; statusIcon = 'close-circle'; statusLabel = 'Incorrect'; }
-            else if (pending) { statusColor = '#F59E0B'; statusIcon = 'time-outline'; statusLabel = 'Pending'; }
+            if (isCorrect) { statusColor = c.accent; statusIcon = 'checkmark-circle'; statusLabel = 'Correct'; }
+            else if (isWrong) { statusColor = c.destructive; statusIcon = 'close-circle'; statusLabel = 'Incorrect'; }
+            else if (pending) { statusColor = c.warning; statusIcon = 'time-outline'; statusLabel = 'Pending'; }
 
             return (
-              <View key={q.id} style={styles.reviewCard}>
+              <View key={q.id} style={[styles.reviewCard, { backgroundColor: c.surface, borderColor: c.border }]}>
                 <View style={styles.reviewHeader}>
-                  <Text style={styles.reviewNum}>Question {i + 1}</Text>
-                  <View style={[styles.statusPill, { backgroundColor: `${statusColor}22` }]}>
+                  <Text style={[styles.reviewNum, { color: c.textSecondary }]}>Question {i + 1}</Text>
+                  <View style={[styles.statusPill, { backgroundColor: c.surfaceMuted }]}>
                     <Ionicons name={statusIcon} size={12} color={statusColor} />
                     <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
                   </View>
                 </View>
                 <View style={styles.promptRow}>
-                  <Text style={styles.reviewPrompt}>{q.promptSnapshot}</Text>
+                  <Text style={[styles.reviewPrompt, { color: c.foreground }]}>{q.promptSnapshot}</Text>
                   <TouchableOpacity
-                    style={[styles.speakBtn, speakingId === q.id && styles.speakBtnActive]}
+                    style={[styles.speakBtn, { backgroundColor: speakingId === q.id ? c.primary : c.surfaceMuted }]}
                     onPress={() => speakQuestion(q.id, q.promptSnapshot)}
-                    activeOpacity={0.7}
+                    activeOpacity={0.75}
+                    accessibilityRole="button"
+                    accessibilityLabel={speakingId === q.id ? 'Stop reading the question' : 'Read the question aloud'}
                   >
                     <Ionicons
                       name={speakingId === q.id ? 'volume-high' : 'volume-medium-outline'}
                       size={16}
-                      color={speakingId === q.id ? '#FFFFFF' : '#8892B0'}
+                      color={speakingId === q.id ? c.onBrand : c.textSecondary}
                     />
                   </TouchableOpacity>
                 </View>
 
-                {isMC && (
+                {isMC ? (
                   <View style={styles.reviewOptions}>
                     {q.optionsSnapshot.map((opt, oi) => {
                       const wasSelected = ans?.answer === opt.label;
                       const isCorrectOpt = opt.label === q.correctAnswerSnapshot;
+                      const highlight = isCorrectOpt ? c.accent : c.destructive;
+                      const showHighlight = (wasSelected && isCorrect) || (wasSelected && isWrong) || isCorrectOpt;
                       return (
                         <View
                           key={oi}
                           style={[
                             styles.reviewOption,
-                            wasSelected && isCorrect && styles.reviewOptionCorrect,
-                            wasSelected && isWrong && styles.reviewOptionWrong,
-                            !wasSelected && isCorrectOpt && styles.reviewOptionCorrect,
+                            { backgroundColor: c.surfaceMuted, borderColor: showHighlight ? highlight : 'transparent' },
                           ]}
                         >
-                          <Text style={styles.reviewOptionLabel}>{opt.label}.</Text>
-                          <Text style={[styles.reviewOptionText, (wasSelected || isCorrectOpt) && { color: '#FFFFFF' }]}>{opt.text}</Text>
-                          {wasSelected && (
+                          <Text style={[styles.reviewOptionLabel, { color: c.textSecondary }]}>{opt.label}.</Text>
+                          <Text style={[styles.reviewOptionText, { color: c.textBody }]}>{opt.text}</Text>
+                          {wasSelected ? (
                             <Ionicons
                               name={isCorrect ? 'checkmark-circle' : 'close-circle'}
                               size={18}
-                              color={isCorrect ? '#2ECC71' : '#FF5370'}
+                              color={isCorrect ? c.accent : c.destructive}
                             />
-                          )}
-                          {!wasSelected && isCorrectOpt && (
-                            <Ionicons name="checkmark-circle" size={18} color="#2ECC71" />
-                          )}
+                          ) : null}
+                          {!wasSelected && isCorrectOpt ? <Ionicons name="checkmark-circle" size={18} color={c.accent} /> : null}
                         </View>
                       );
                     })}
                   </View>
-                )}
+                ) : null}
 
-                {pending && (
-                  <View style={styles.pendingBox}>
-                    <Ionicons name="time-outline" size={16} color="#F59E0B" />
-                    <Text style={styles.pendingText}>Pending teacher grading</Text>
+                {pending ? (
+                  <View style={[styles.pendingBox, { backgroundColor: c.surfaceMuted }]}>
+                    <Ionicons name="time-outline" size={16} color={c.warning} />
+                    <Text style={[styles.pendingText, { color: c.warning }]}>Pending teacher grading</Text>
                   </View>
-                )}
+                ) : null}
 
-                {ans?.score != null && ans.score > 0 && !pending && (
-                  <Text style={styles.scoreEarned}>+{ans?.score} pt{ans?.score !== 1 ? 's' : ''}</Text>
-                )}
+                {ans?.score != null && ans.score > 0 && !pending ? (
+                  <Text style={[styles.scoreEarned, { color: c.accent }]}>
+                    +{ans?.score} pt{ans?.score !== 1 ? 's' : ''}
+                  </Text>
+                ) : null}
               </View>
             );
           })}
 
-          <TouchableOpacity style={styles.returnBtn} onPress={() => router.navigate('/quizzes')}>
-            <Text style={styles.returnBtnText}>Back to Quizzes</Text>
+          <TouchableOpacity style={[styles.returnBtn, { backgroundColor: c.primarySoft }]} onPress={() => router.navigate('/quizzes')} accessibilityRole="button">
+            <Text style={[styles.returnBtnText, { color: c.primary }]}>Back to quizzes</Text>
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -251,37 +235,33 @@ export default function QuizResultsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 12 },
-  backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 18, fontWeight: '800', color: '#FFFFFF' },
-  scoreCard: { borderRadius: 24, padding: 32, alignItems: 'center', marginBottom: 24 },
-  scoreLabel: { fontSize: 14, color: 'rgba(255,255,255,0.7)', marginBottom: 8 },
-  scoreValue: { fontSize: 56, fontWeight: '900', marginBottom: 4 },
-  scoreDetail: { fontSize: 15, color: 'rgba(255,255,255,0.8)', fontWeight: '600' },
-  sectionTitle: { fontSize: 14, fontWeight: '700', color: '#8892B0', marginBottom: 12, letterSpacing: 0.5 },
-  reviewCard: { backgroundColor: 'rgba(20,29,58,0.9)', borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
+const makeStyles = (c: Colors) => StyleSheet.create({
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8, paddingHorizontal: 24 },
+  scoreCard: { borderRadius: 24, padding: 28, alignItems: 'center', marginBottom: 24, borderWidth: 1 },
+  scoreLabel: { fontSize: 14, marginBottom: 8, textAlign: 'center' },
+  scoreValue: { fontSize: 52, fontWeight: '900', marginBottom: 10 },
+  scoreBar: { width: '100%', height: 8, borderRadius: 4, overflow: 'hidden', marginBottom: 12 },
+  scoreBarFill: { height: 8, borderRadius: 4 },
+  scoreDetail: { fontSize: 14.5, fontWeight: '600' },
+  sectionTitle: { fontSize: 12.5, fontWeight: '700', letterSpacing: 0.5, marginBottom: 12 },
+  reviewCard: { borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 1 },
   reviewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  reviewNum: { fontSize: 11, fontWeight: '700', color: '#8892B0', letterSpacing: 0.5 },
+  reviewNum: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3 },
   statusText: { fontSize: 11, fontWeight: '700' },
   promptRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 12 },
-  reviewPrompt: { flex: 1, fontSize: 15, fontWeight: '600', color: '#FFFFFF', lineHeight: 22 },
-  speakBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center', marginTop: -2 },
-  speakBtnActive: { backgroundColor: '#3D5AFE' },
+  reviewPrompt: { flex: 1, fontSize: 15, fontWeight: '600', lineHeight: 22 },
+  speakBtn: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginTop: -2 },
   reviewOptions: { gap: 8 },
-  reviewOption: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.04)' },
-  reviewOptionCorrect: { backgroundColor: 'rgba(46,204,113,0.12)' },
-  reviewOptionWrong: { backgroundColor: 'rgba(255,83,112,0.12)' },
-  reviewOptionLabel: { fontSize: 12, fontWeight: '700', color: '#8892B0' },
-  reviewOptionText: { flex: 1, fontSize: 13, color: '#AAAFCO' },
-  pendingBox: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12, backgroundColor: 'rgba(245,158,11,0.08)' },
-  pendingText: { fontSize: 13, color: '#F59E0B', fontWeight: '600' },
-  scoreEarned: { fontSize: 13, fontWeight: '700', color: '#2ECC71', marginTop: 8 },
-  submittedTitle: { fontSize: 24, fontWeight: '800', color: '#FFFFFF', marginTop: 16 },
-  submittedSub: { fontSize: 15, color: '#8892B0', textAlign: 'center', lineHeight: 22, paddingHorizontal: 40, marginBottom: 24 },
-  returnBtn: { marginTop: 16, paddingVertical: 16, borderRadius: 16, backgroundColor: 'rgba(61,90,254,0.15)', alignItems: 'center' },
-  returnBtnText: { color: '#3D5AFE', fontSize: 15, fontWeight: '700' },
-  backHomeBtn: { marginTop: 16, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12, backgroundColor: 'rgba(61,90,254,0.15)' },
+  reviewOption: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12, borderWidth: 1 },
+  reviewOptionLabel: { fontSize: 12, fontWeight: '700' },
+  reviewOptionText: { flex: 1, fontSize: 13 },
+  pendingBox: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12 },
+  pendingText: { fontSize: 13, fontWeight: '600' },
+  scoreEarned: { fontSize: 13, fontWeight: '700', marginTop: 8 },
+  submittedTitle: { fontSize: 24, fontWeight: '800', marginTop: 16 },
+  submittedSub: { fontSize: 15, textAlign: 'center', lineHeight: 22, paddingHorizontal: 24, marginBottom: 24 },
+  returnBtn: { paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 16, paddingHorizontal: 24 },
+  returnBtnText: { fontSize: 15, fontWeight: '700' },
+  backHomeBtn: { marginTop: 16, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12 },
 });

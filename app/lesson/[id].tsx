@@ -1,9 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Platform, Alert, Animated,
+  Alert, Animated,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, router } from 'expo-router';
 import AuroraBackground from '@/components/AuroraBackground';
@@ -12,6 +11,10 @@ import ConceptAnimation from '@/components/ConceptAnimation';
 import CelebrationOverlay from '@/components/CelebrationOverlay';
 import { getLessonById, getTopicById } from '@/data/learningData';
 import { useApp } from '@/context/AppContext';
+import { useColors, type Colors } from '@/hooks/useColors';
+import { accessibleAccent, withAlpha } from '@/constants/colors';
+import { useTopPadding } from '@/hooks/useScreenInsets';
+import { useTheme } from '@/context/ThemeContext';
 import * as Haptics from 'expo-haptics';
 
 const TYPE_DESCRIPTIONS: Record<string, string> = {
@@ -28,8 +31,10 @@ const TYPE_DESCRIPTIONS: Record<string, string> = {
 export default function LessonScreen() {
   const { id, topicId } = useLocalSearchParams<{ id: string; topicId: string }>();
   const { saveLessonAttempt, gamification } = useApp();
-  const insets = useSafeAreaInsets();
-  const topPad = Platform.OS === 'web' ? 67 : insets.top;
+  const c = useColors();
+  const { isDark } = useTheme();
+  const topPad = useTopPadding();
+  const styles = useMemo(() => makeStyles(c), [c]);
 
   const lesson = getLessonById(id);
   const topic = getTopicById(topicId);
@@ -51,11 +56,15 @@ export default function LessonScreen() {
     return (
       <AuroraBackground>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ color: '#FFFFFF', fontSize: 16 }}>Lesson not found</Text>
+          <Text style={{ color: c.foreground, fontSize: 16 }}>Lesson not found</Text>
         </View>
       </AuroraBackground>
     );
   }
+
+  // The curriculum's topic colour is designed for a dark surface; in light mode it is
+  // shaded so labels and bars stay readable.
+  const topicColor = accessibleAccent(topic.color, isDark);
 
   const activities = lesson.activities;
   const currentIdx = typeof step === 'number' ? step : -1;
@@ -119,65 +128,69 @@ export default function LessonScreen() {
     <AuroraBackground>
       <View style={{ flex: 1 }}>
         <View style={[styles.header, { paddingTop: topPad + 8 }]}>
-          <TouchableOpacity onPress={handleExit} style={styles.closeBtn}>
-            <Ionicons name="close" size={20} color="#FFFFFF" />
+          <TouchableOpacity onPress={handleExit} style={[styles.closeBtn, { backgroundColor: c.surfaceMuted }]} accessibilityRole="button" accessibilityLabel="Leave lesson">
+            <Ionicons name="close" size={20} color={c.foreground} />
           </TouchableOpacity>
           <View style={styles.progressContainer}>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${progress * 100}%` as any, backgroundColor: topic.color }]} />
+            <View style={[styles.progressTrack, { backgroundColor: c.surfaceSunken }]}>
+              <View style={[styles.progressFill, { width: `${progress * 100}%` as never, backgroundColor: topicColor }]} />
             </View>
-            <Text style={styles.progressLabel}>{currentStepNum + 1}/{totalSteps}</Text>
+            <Text style={[styles.progressLabel, { color: c.textSecondary }]}>{currentStepNum + 1}/{totalSteps}</Text>
           </View>
         </View>
 
         {step === 'animation' ? (
           <View style={styles.animationContainer}>
-            <ConceptAnimation topicId={topicId} topicColor={topic.color} onComplete={handleAnimationComplete} />
+            <ConceptAnimation topicId={topicId} topicColor={topicColor} onComplete={handleAnimationComplete} />
           </View>
         ) : step === 'review' ? (
           <View style={styles.animationContainer}>
-            <ConceptAnimation topicId={topicId} topicColor={topic.color} review onComplete={handleReviewComplete} />
+            <ConceptAnimation topicId={topicId} topicColor={topicColor} review onComplete={handleReviewComplete} />
           </View>
         ) : (
           <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
             {step === 'intro' ? (
               <View style={styles.introContainer}>
-                <View style={[styles.introIcon, { backgroundColor: `${topic.color}22` }]}>
-                  <Ionicons name={topic.iconName as any} size={40} color={topic.color} />
+                <View style={[styles.introIcon, { backgroundColor: withAlpha(topic.color, 0.13) }]}>
+                  <Ionicons name={topic.iconName as never} size={40} color={topicColor} />
                 </View>
-                <Text style={styles.lessonTitle}>{lesson.title}</Text>
-                <View style={[styles.objectiveBox, { borderColor: `${topic.color}44` }]}>
-                  <Text style={styles.objectiveLabel}>GOAL</Text>
-                  <Text style={styles.objectiveText}>{lesson.objective}</Text>
+                <Text style={[styles.lessonTitle, { color: c.foreground }]}>{lesson.title}</Text>
+                <View style={[styles.objectiveBox, { borderColor: withAlpha(topic.color, 0.27), backgroundColor: c.surfaceMuted }]}>
+                  <Text style={[styles.objectiveLabel, { color: c.textSecondary }]}>GOAL</Text>
+                  <Text style={[styles.objectiveText, { color: c.foreground }]}>{lesson.objective}</Text>
                 </View>
-                <View style={styles.explanationBox}>
-                  <Text style={styles.explanationText}>{lesson.explanation}</Text>
+                <View style={[styles.explanationBox, { backgroundColor: c.surfaceMuted }]}>
+                  <Text style={[styles.explanationText, { color: c.textBody }]}>{lesson.explanation}</Text>
                 </View>
                 <View style={styles.activityTypesPreview}>
-                  <Text style={styles.activityTypesLabel}>THIS LESSON USES:</Text>
+                  <Text style={[styles.activityTypesLabel, { color: c.textSecondary }]}>THIS LESSON USES:</Text>
                   <View style={styles.activityTypesRow}>
                     {[...new Set(activities.map(a => a.type))].map(type => (
-                      <View key={type} style={styles.activityTypePill}>
-                        <Text style={styles.activityTypePillText}>{TYPE_DESCRIPTIONS[type]}</Text>
+                      <View key={type} style={[styles.activityTypePill, { backgroundColor: c.surfaceMuted }]}>
+                        <Text style={[styles.activityTypePillText, { color: c.textBody }]}>{TYPE_DESCRIPTIONS[type]}</Text>
                       </View>
                     ))}
                   </View>
                 </View>
-                <TouchableOpacity style={[styles.startBtn, { backgroundColor: topic.color }]} onPress={handleNext} activeOpacity={0.85}>
-                  <Text style={styles.startBtnText}>Start Lesson</Text>
-                  <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+                <TouchableOpacity style={[styles.startBtn, { backgroundColor: topicColor }]} onPress={handleNext} activeOpacity={0.85}>
+                  <Text style={[styles.startBtnText, { color: c.onBrand }]}>Start Lesson</Text>
+                  <Ionicons name="arrow-forward" size={18} color={c.onBrand} />
                 </TouchableOpacity>
               </View>
             ) : (
               <Animated.View style={[styles.activityContainer, { opacity: fadeAnim }]}>
                 <View style={styles.activityHeader}>
-                  <Text style={styles.activityNum}>Question {(step as number) + 1} of {activities.length}</Text>
-                  <View style={[styles.activityTypeBadge, { backgroundColor: `${topic.color}22`, borderColor: `${topic.color}44` }]}>
-                    <Text style={[styles.activityTypeBadgeText, { color: topic.color }]}>{TYPE_DESCRIPTIONS[currentActivity!.type]}</Text>
+                  <Text style={[styles.activityNum, { color: c.textSecondary }]}>
+                    Question {(step as number) + 1} of {activities.length}
+                  </Text>
+                  <View style={[styles.activityTypeBadge, { backgroundColor: withAlpha(topic.color, 0.13), borderColor: withAlpha(topic.color, 0.27) }]}>
+                    <Text style={[styles.activityTypeBadgeText, { color: topicColor }]}>
+                      {TYPE_DESCRIPTIONS[currentActivity!.type]}
+                    </Text>
                   </View>
                 </View>
-                <View style={styles.questionBox}>
-                  <Text style={styles.questionText}>{currentActivity!.question}</Text>
+                <View style={[styles.questionBox, { backgroundColor: c.surface }]}>
+                  <Text style={[styles.questionText, { color: c.foreground }]}>{currentActivity!.question}</Text>
                 </View>
                 <ActivityRenderer
                   key={step}
@@ -186,13 +199,19 @@ export default function LessonScreen() {
                   onIncorrect={handleIncorrect}
                 />
                 <TouchableOpacity
-                  style={[styles.nextBtn, { backgroundColor: answeredCurrent ? topic.color : 'rgba(255,255,255,0.1)' }]}
+                  style={[styles.nextBtn, { backgroundColor: answeredCurrent ? topicColor : c.surfaceMuted }]}
                   onPress={handleNext}
                   activeOpacity={0.85}
                   disabled={!answeredCurrent}
                 >
-                  <Text style={[styles.nextBtnText, !answeredCurrent && { color: '#4A5080' }]}>{(step as number) < activities.length - 1 ? 'Next' : 'Finish'}</Text>
-                  <Ionicons name={(step as number) < activities.length - 1 ? 'arrow-forward' : 'checkmark'} size={18} color={answeredCurrent ? '#FFFFFF' : '#4A5080'} />
+                  <Text style={[styles.nextBtnText, { color: answeredCurrent ? c.onBrand : c.textDim }]}>
+                    {(step as number) < activities.length - 1 ? 'Next' : 'Finish'}
+                  </Text>
+                  <Ionicons
+                    name={(step as number) < activities.length - 1 ? 'arrow-forward' : 'checkmark'}
+                    size={18}
+                    color={answeredCurrent ? c.onBrand : c.textDim}
+                  />
                 </TouchableOpacity>
               </Animated.View>
             )}
@@ -217,37 +236,37 @@ export default function LessonScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Colors) => StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingBottom: 12 },
-  closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
+  closeBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   progressContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  progressTrack: { flex: 1, height: 6, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 3 },
+  progressTrack: { flex: 1, height: 6, borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: 6, borderRadius: 3 },
-  progressLabel: { fontSize: 12, color: '#8892B0', width: 40, textAlign: 'right' },
+  progressLabel: { fontSize: 12, width: 44, textAlign: 'right' },
   content: { padding: 20, paddingBottom: 40 },
   introContainer: { alignItems: 'center', gap: 20 },
   introIcon: { width: 80, height: 80, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
-  lessonTitle: { fontSize: 24, fontWeight: '800', color: '#FFFFFF', textAlign: 'center' },
-  objectiveBox: { width: '100%', borderRadius: 16, padding: 16, borderWidth: 1.5, backgroundColor: 'rgba(255,255,255,0.03)' },
-  objectiveLabel: { fontSize: 10, fontWeight: '700', color: '#8892B0', letterSpacing: 1, marginBottom: 6 },
-  objectiveText: { fontSize: 15, color: '#FFFFFF', lineHeight: 22 },
-  explanationBox: { width: '100%', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 16, padding: 16 },
-  explanationText: { fontSize: 15, color: '#CCCCCC', lineHeight: 24 },
+  lessonTitle: { fontSize: 24, fontWeight: '800', textAlign: 'center' },
+  objectiveBox: { width: '100%', borderRadius: 16, padding: 16, borderWidth: 1.5 },
+  objectiveLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 6 },
+  objectiveText: { fontSize: 15, lineHeight: 22 },
+  explanationBox: { width: '100%', borderRadius: 16, padding: 16 },
+  explanationText: { fontSize: 15, lineHeight: 24 },
   activityTypesPreview: { width: '100%' },
-  activityTypesLabel: { fontSize: 10, fontWeight: '700', color: '#8892B0', letterSpacing: 1, marginBottom: 8 },
+  activityTypesLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 8 },
   activityTypesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  activityTypePill: { backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
-  activityTypePillText: { fontSize: 12, color: '#CCCCCC' },
+  activityTypePill: { borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
+  activityTypePillText: { fontSize: 12 },
   animationContainer: { flex: 1, justifyContent: 'center', paddingHorizontal: 8 },
   startBtn: { width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: 16, marginTop: 4 },
-  startBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  startBtnText: { fontSize: 16, fontWeight: '700' },
   activityContainer: { gap: 20 },
   activityHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  activityNum: { fontSize: 13, color: '#8892B0' },
+  activityNum: { fontSize: 13 },
   activityTypeBadge: { borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1 },
   activityTypeBadgeText: { fontSize: 11, fontWeight: '600' },
-  questionBox: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 16, padding: 20 },
-  questionText: { fontSize: 18, fontWeight: '700', color: '#FFFFFF', lineHeight: 26 },
+  questionBox: { borderRadius: 16, padding: 20, borderWidth: 1, borderColor: c.border },
+  questionText: { fontSize: 18, fontWeight: '700', lineHeight: 26 },
   nextBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: 16, marginTop: 8 },
-  nextBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  nextBtnText: { fontSize: 16, fontWeight: '700' },
 });
