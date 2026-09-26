@@ -8,6 +8,7 @@ import {
   routeForNotification,
 } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
+import { isDemoMode } from '@/lib/demoMode';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -91,7 +92,8 @@ function RootLayoutNav() {
   // server-side through the set_push_token() RPC (the profiles table is not
   // writable by clients) and is never printed to the console.
   useEffect(() => {
-    if (Platform.OS === 'web') return;
+    // Web has no push registration; a demo session has no account behind it.
+    if (Platform.OS === 'web' || isDemoMode()) return;
     let cancelled = false;
 
     (async () => {

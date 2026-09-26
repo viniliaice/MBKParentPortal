@@ -9,6 +9,7 @@ import { ChildSelector } from '@/components/ChildSelector';
 import { EmptyState } from '@/components/EmptyState';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { supabase, type QuizAttempt, type Quiz } from '@/lib/supabase';
+import { demoApi, isDemoMode } from '@/lib/demoMode';
 import { useApp } from '@/context/AppContext';
 import { useColors, type Colors } from '@/hooks/useColors';
 
@@ -26,6 +27,21 @@ export default function QuizHistoryScreen() {
     if (!selectedStudentId) return;
     (async () => {
       setLoading(true);
+
+      // Development builds only (see lib/demoMode.ts).
+      if (isDemoMode()) {
+        const own = demoApi.attemptsForStudent(selectedStudentId);
+        const qMap: Record<string, Quiz> = {};
+        for (const attempt of own) {
+          const quiz = demoApi.quizById(attempt.quizId);
+          if (quiz) qMap[quiz.id] = quiz;
+        }
+        setQuizzes(qMap);
+        setAttempts(own.map(a => ({ ...a, quiz_title: qMap[a.quizId]?.title || 'Quiz' })));
+        setLoading(false);
+        return;
+      }
+
       const { data: aData } = await supabase
         .from('quiz_attempts')
         .select('*')

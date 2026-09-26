@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, type SupabaseLinkedProfile } from '@/lib/supabase';
+import { DEMO_PARENT_ID, DEMO_PARENT_NAME, isDemoMode } from '@/lib/demoMode';
 
 interface User {
   id: string;
@@ -25,6 +26,33 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 const AUTH_KEY = '@mbk_auth_user';
+
+/**
+ * A connection that never reached the server is not the parent's mistake, and the
+ * raw browser message ("Failed to fetch", "Network request failed") is not something
+ * a parent can act on. Everything network-shaped maps to one line of plain English.
+ */
+const OFFLINE_MESSAGE = 'Can’t reach the school server. Check your connection and try again.';
+
+/**
+ * The message a transport failure carries depends on the platform — "Failed to
+ * fetch" in a browser, "Network request failed" on a device. supabase-js's own
+ * signal is the reliable one: a failed request is an `AuthRetryableFetchError`
+ * with status 0 (see @supabase/auth-js lib/fetch). The message patterns stay as a
+ * fallback for errors that arrive wrapped or re-thrown.
+ */
+const NETWORK_MESSAGE = /failed to fetch|network request failed|networkerror|load failed|fetch failed|timed? ?out|offline/i;
+
+function isNetworkFailure(error: unknown): boolean {
+  if (typeof error === 'string') return NETWORK_MESSAGE.test(error);
+  if (error && typeof error === 'object') {
+    const e = error as { name?: string; status?: number; message?: string };
+    if (e.name === 'AuthRetryableFetchError') return true;
+    if (e.status === 0) return true;
+    if (typeof e.message === 'string') return NETWORK_MESSAGE.test(e.message);
+  }
+  return false;
+}
 
 /**
  * Sign-in is real Supabase Auth. The returned profile comes from the
@@ -55,6 +83,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string): Promise<string | null> => {
     const normalisedEmail = email.trim().toLowerCase();
+
+    // Development builds only (see lib/demoMode.ts). Nothing is sent anywhere: the
+    // demo account exists so the signed-in screens can be reviewed offline.
+    if (isDemoMode()) {
+      const demoUser: User = {
+        id: DEMO_PARENT_ID,
+        name: DEMO_PARENT_NAME,
+        email: normalisedEmail || 'demo@mbk.school',
+        profileId: DEMO_PARENT_ID,
+        role: 'parent',
+      };
+      await AsyncStorage.setItem(AUTH_KEY, JSON.stringify(demoUser));
+      setUser(demoUser);
+      return null;
+    }
+
     try {
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: normalisedEmail,
@@ -64,6 +108,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (authError) {
         if (authError.message === 'Invalid login credentials') {
           return 'Incorrect email or password.';
+        }
+        if (isNetworkFailure(authError)) {
+          return OFFLINE_MESSAGE;
         }
         return authError.message;
       }
@@ -101,20 +148,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await AsyncStorage.setItem(AUTH_KEY, JSON.stringify(appUser));
       setUser(appUser);
       return null;
-    } catch {
-      return 'Something went wrong. Please try again.';
+    } catch (err) {
+      return isNetworkFailure(err) ? OFFLINE_MESSAGE : 'Something went wrong. Please try again.';
     }
   };
 
   const logout = async () => {
-    try {
-      // Stop push notifications for the signed-out account. Best effort: a
-      // failure here must not keep the user signed in.
-      await supabase.rpc('clear_push_token');
-    } catch {
-      // ignored on purpose
+    if (!isDemoMode()) {
+      try {
+        // Stop push notifications for the signed-out account. Best effort: a
+        // failure here must not keep the user signed in.
+        await supabase.rpc('clear_push_token');
+      } catch {
+        // ignored on purpose
+      }
+      await supabase.auth.signOut();
     }
-    await supabase.auth.signOut();
     await AsyncStorage.removeItem(AUTH_KEY);
     setUser(null);
   };

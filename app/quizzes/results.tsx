@@ -8,6 +8,7 @@ import * as Speech from 'expo-speech';
 import AuroraBackground from '@/components/AuroraBackground';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { supabase, type QuizAttempt, type Quiz, type QuizQuestion, type QuizAnswer } from '@/lib/supabase';
+import { demoApi, isDemoMode } from '@/lib/demoMode';
 import { useColors, type Colors } from '@/hooks/useColors';
 
 export default function QuizResultsScreen() {
@@ -43,6 +44,18 @@ export default function QuizResultsScreen() {
   useEffect(() => {
     (async () => {
       try {
+        // Development builds only (see lib/demoMode.ts).
+        if (isDemoMode()) {
+          const demoAttempt = demoApi.attemptById(attemptId);
+          if (demoAttempt) {
+            setAttempt(demoAttempt);
+            setQuiz(demoApi.quizById(demoAttempt.quizId));
+            setQuestions(demoApi.quizQuestions(demoAttempt.quizId));
+          }
+          setLoading(false);
+          return;
+        }
+
         const { data: aData } = await supabase
           .from('quiz_attempts')
           .select('*')

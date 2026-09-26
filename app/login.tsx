@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import AuroraBackground from '@/components/AuroraBackground';
+import { isDemoMode } from '@/lib/demoMode';
 import { useColors, type Colors } from '@/hooks/useColors';
 
 export default function LoginScreen() {
@@ -51,6 +52,16 @@ export default function LoginScreen() {
 
           <Text style={styles.appName}>MBK Parent Portal</Text>
           <Text style={styles.subtitle}>Sign in to follow your child’s progress</Text>
+
+          {isDemoMode() && (
+            <View style={styles.demoBanner}>
+              <Ionicons name="flask-outline" size={15} color={c.warning} />
+              <Text style={styles.demoText}>
+                Preview build: any email and password opens the app with example data.
+                Nothing is sent to the school.
+              </Text>
+            </View>
+          )}
 
           <View style={styles.card}>
             <Text style={styles.label}>Email address</Text>
@@ -125,6 +136,20 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   logoImage: { width: 100, height: 100, borderRadius: 50 },
   appName: { fontSize: 28, fontWeight: '800', color: c.foreground, letterSpacing: -0.5, marginBottom: 8 },
   subtitle: { fontSize: 15, color: c.textSecondary, marginBottom: 36, textAlign: 'center' },
+  demoBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    width: '100%',
+    marginTop: -22,
+    marginBottom: 22,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: c.border,
+    backgroundColor: c.surfaceMuted,
+  },
+  demoText: { flex: 1, fontSize: 12, lineHeight: 17, color: c.textSecondary },
   card: {
     width: '100%',
     backgroundColor: c.surface,

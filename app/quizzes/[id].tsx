@@ -10,6 +10,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import AuroraBackground from '@/components/AuroraBackground';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { supabase, type Quiz, type QuizQuestion } from '@/lib/supabase';
+import { demoApi, isDemoMode } from '@/lib/demoMode';
 import { useColors, type Colors } from '@/hooks/useColors';
 import { shuffleArray } from '@/utils/seededRandom';
 
@@ -41,6 +42,20 @@ export default function TakeQuizScreen() {
 
   useEffect(() => {
     (async () => {
+      // Development builds only (see lib/demoMode.ts).
+      if (isDemoMode()) {
+        const demoQuizRow = demoApi.quizById(quizId);
+        if (demoQuizRow) {
+          setQuiz(demoQuizRow);
+          if (demoQuizRow.timeLimit) setTimeLeft(demoQuizRow.timeLimit * 60);
+          const rows = demoApi.quizQuestions(quizId);
+          setQuestions(demoQuizRow.questionOrder === 'random'
+            ? shuffleArray(rows, `${quizId}-${studentId}-questions`)
+            : rows);
+        }
+        return;
+      }
+
       const { data: qData } = await supabase.from('quizzes').select('*').eq('id', quizId).single();
       if (qData) {
         setQuiz(qData as Quiz);
@@ -119,6 +134,17 @@ export default function TakeQuizScreen() {
 
     const totalEarned = gradedAnswers.reduce((s, a) => s + a.score, 0);
     const totalPossible = questions.reduce((s, q) => s + q.points, 0);
+
+    // Development builds only (see lib/demoMode.ts): the attempt stays in memory.
+    if (isDemoMode()) {
+      const submittedAt = new Date().toISOString();
+      const attemptId = demoApi.saveQuizAttempt({
+        quizId, studentId, answers: gradedAnswers, totalEarned, totalPossible,
+        status: 'submitted', startedAt, submittedAt, gradedAt: submittedAt,
+      });
+      router.replace({ pathname: '/quizzes/results', params: { id: attemptId } });
+      return;
+    }
 
     const { data, error } = await supabase.from('quiz_attempts').insert({
       quizId,

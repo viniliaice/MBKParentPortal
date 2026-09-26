@@ -12,6 +12,7 @@ import { ChildSelector } from '@/components/ChildSelector';
 import { EmptyState } from '@/components/EmptyState';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { supabase, type Quiz } from '@/lib/supabase';
+import { demoApi, isDemoMode } from '@/lib/demoMode';
 import { useApp } from '@/context/AppContext';
 import { useColors, type Colors } from '@/hooks/useColors';
 
@@ -30,6 +31,15 @@ export default function QuizListScreen() {
 
   const fetchQuizzes = useCallback(async () => {
     if (!student) return;
+
+    // Development builds only (see lib/demoMode.ts).
+    if (isDemoMode()) {
+      setQuizzes(demoApi.quizzesForClass(student.className));
+      setAttemptedQuizIds(demoApi.attemptedQuizIds(student.id));
+      setLoading(false);
+      return;
+    }
+
     const now = new Date().toISOString();
     const { data: qData } = await supabase
       .from('quizzes')
@@ -146,13 +156,15 @@ export default function QuizListScreen() {
                     style={[styles.viewResultsBtn, { backgroundColor: c.primarySoft }]}
                     onPress={async () => {
                       try {
-                        const { data } = await supabase
-                          .from('quiz_attempts')
-                          .select('id')
-                          .eq('quizId', q.id)
-                          .eq('studentId', selectedStudentId)
-                          .maybeSingle();
-                        if (data) router.push({ pathname: '/quizzes/results', params: { id: data.id } });
+                        const attemptId = isDemoMode()
+                          ? demoApi.attemptsForStudent(selectedStudentId ?? '').find(a => a.quizId === q.id)?.id
+                          : (await supabase
+                              .from('quiz_attempts')
+                              .select('id')
+                              .eq('quizId', q.id)
+                              .eq('studentId', selectedStudentId)
+                              .maybeSingle()).data?.id;
+                        if (attemptId) router.push({ pathname: '/quizzes/results', params: { id: attemptId } });
                       } catch {
                         // A missing attempt simply means the button does nothing yet.
                       }

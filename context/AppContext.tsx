@@ -16,6 +16,11 @@ import { useAuth } from '@/context/AuthContext';
 import type { HomeworkItem, AttendanceRecord, AppMessage } from '@/data/mockData';
 import { computeMasteryLevel, nextSrsDueDate } from '@/lib/mastery';
 import { computePendingReports, type PendingReport } from '@/lib/reportSelectors';
+import {
+  DEMO_ACADEMIC_YEARS, DEMO_ANNOUNCEMENTS, DEMO_ATTENDANCE, DEMO_EXAMS, DEMO_GAMIFICATION,
+  DEMO_HOMEWORK, DEMO_LESSON_ATTEMPTS, DEMO_LESSON_PROGRESS, DEMO_STUDENTS,
+  demoApi, isDemoMode,
+} from '@/lib/demoMode';
 
 export type AttemptSummary = { accuracyPct: number; completedAt: string | null };
 
@@ -30,6 +35,51 @@ const DEFAULT_GAMIFICATION: GamificationState = {
   currentStreak: 0, longestStreak: 0, lastLessonDate: null,
   level: 1, totalXPEarned: 0, dailyRewardClaimed: false, dailyRewardDate: null,
 };
+
+/**
+ * Row → app shape. These are shared by the live load and the demo load
+ * (`lib/demoMode.ts`), so a column that changes only has one place to be fixed.
+ */
+function mapLessonProgressRow(row: SupabaseLessonProgress): LessonProgress {
+  return {
+    lessonId: row.lesson_id,
+    completed: row.completed,
+    xpEarned: row.xp_earned,
+    correctCount: row.correct_count,
+    totalActivities: row.total_activities,
+    completedAt: row.completed_at || undefined,
+    activityResults: row.activity_results || [],
+    masteryLevel: row.mastery_level ?? 0,
+    attemptsCount: row.attempts_count ?? 0,
+    lastAttemptAt: row.last_attempt_at ?? null,
+    srsDueAt: row.srs_due_at ?? null,
+    srsCorrectStreak: row.srs_correct_streak ?? 0,
+  };
+}
+
+function groupLessonAttempts(rows: SupabaseLessonAttempt[]): Record<string, AttemptSummary[]> {
+  const byLesson: Record<string, AttemptSummary[]> = {};
+  for (const row of rows) {
+    if (!byLesson[row.lesson_id]) byLesson[row.lesson_id] = [];
+    byLesson[row.lesson_id].push({
+      accuracyPct: row.accuracy_pct,
+      completedAt: row.completed_at,
+    });
+  }
+  return byLesson;
+}
+
+function mapGamificationRow(g: SupabaseGamification): GamificationState {
+  return {
+    currentStreak: g.current_streak,
+    longestStreak: g.longest_streak,
+    lastLessonDate: g.last_lesson_date,
+    level: g.level,
+    totalXPEarned: g.total_xp_earned,
+    dailyRewardClaimed: g.daily_reward_claimed,
+    dailyRewardDate: g.daily_reward_date,
+  };
+}
 
 /**
  * The RPC raises stable codes so the UI can explain the failure without
@@ -373,6 +423,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!silent) setLoading(true);
     setError(null);
 
+    // Development builds only (see lib/demoMode.ts): the same shapes the queries
+    // below return, so every screen renders exactly as it does with live data.
+    if (isDemoMode()) {
+      setStudents(DEMO_STUDENTS);
+      setLessonProgress(Object.fromEntries(DEMO_LESSON_PROGRESS.map(row => [row.lesson_id, mapLessonProgressRow(row)])));
+      setLessonAttempts(groupLessonAttempts(DEMO_LESSON_ATTEMPTS));
+      setGamification(mapGamificationRow(DEMO_GAMIFICATION));
+      setGamRespExists(true);
+      setRawExams(DEMO_EXAMS);
+      setRawAttendance(DEMO_ATTENDANCE);
+      setHomework(DEMO_HOMEWORK);
+      setAcademicYears(DEMO_ACADEMIC_YEARS);
+      setMessages(demoApi.messages());
+      setAnnouncements(DEMO_ANNOUNCEMENTS);
+      setContacts(demoApi.contacts());
+      setLoading(false);
+      return;
+    }
+
     const [studentResp, progResp, gamResp, attemptsResp] = await Promise.all([
       supabase.from('students').select('*').eq('parentId', user.id),
       supabase.from('lesson_progress').select('*').eq('parent_id', user.id),
@@ -397,47 +466,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (progResp.data) {
       const progressMap: Record<string, LessonProgress> = {};
       for (const row of progResp.data as SupabaseLessonProgress[]) {
-        progressMap[row.lesson_id] = {
-          lessonId: row.lesson_id,
-          completed: row.completed,
-          xpEarned: row.xp_earned,
-          correctCount: row.correct_count,
-          totalActivities: row.total_activities,
-          completedAt: row.completed_at || undefined,
-          activityResults: row.activity_results || [],
-          masteryLevel: row.mastery_level ?? 0,
-          attemptsCount: row.attempts_count ?? 0,
-          lastAttemptAt: row.last_attempt_at ?? null,
-          srsDueAt: row.srs_due_at ?? null,
-          srsCorrectStreak: row.srs_correct_streak ?? 0,
-        };
+        progressMap[row.lesson_id] = mapLessonProgressRow(row);
       }
       setLessonProgress(progressMap);
     }
 
     if (attemptsResp.data) {
-      const attemptsMap: Record<string, AttemptSummary[]> = {};
-      for (const row of attemptsResp.data as SupabaseLessonAttempt[]) {
-        if (!attemptsMap[row.lesson_id]) attemptsMap[row.lesson_id] = [];
-        attemptsMap[row.lesson_id].push({
-          accuracyPct: row.accuracy_pct,
-          completedAt: row.completed_at,
-        });
-      }
-      setLessonAttempts(attemptsMap);
+      setLessonAttempts(groupLessonAttempts(attemptsResp.data as SupabaseLessonAttempt[]));
     }
 
     if (gamResp.data) {
-      const g = gamResp.data as SupabaseGamification;
-      setGamification({
-        currentStreak: g.current_streak,
-        longestStreak: g.longest_streak,
-        lastLessonDate: g.last_lesson_date,
-        level: g.level,
-        totalXPEarned: g.total_xp_earned,
-        dailyRewardClaimed: g.daily_reward_claimed,
-        dailyRewardDate: g.daily_reward_date,
-      });
+      setGamification(mapGamificationRow(gamResp.data as SupabaseGamification));
       setGamRespExists(true);
     }
 
@@ -598,11 +637,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const markRead = async (id: string) => {
     setMessages(prev => prev.map(m => m.id === id ? { ...m, isRead: true } : m));
+    if (isDemoMode()) {
+      demoApi.markMessageRead(id);
+      return;
+    }
     // Only the recipient may mark a message read; the RPC enforces that.
     await supabase.rpc('mark_message_read', { p_message: id });
   };
 
   const loadContacts = async (): Promise<SupabaseContact[]> => {
+    if (isDemoMode()) {
+      const list = demoApi.contacts();
+      setContacts(list);
+      return list;
+    }
     const { data, error } = await supabase.rpc('list_contacts');
     if (error || !data) return [];
     const list = data as SupabaseContact[];
@@ -611,6 +659,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const sendMessage = async ({ recipientId, subject, body }: SendMessageInput): Promise<SendMessageResult> => {
+    if (isDemoMode()) {
+      const sent = demoApi.sendMessage({
+        recipientId, subject, body,
+        senderId: user?.id ?? '',
+      });
+      setMessages(prev => [sent, ...prev]);
+      return { ok: true };
+    }
+
     const { data, error } = await supabase.rpc('send_message', {
       p_recipient: recipientId,
       p_subject: subject,
@@ -673,6 +730,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
 
     setGamification(newGam);
+
+    // A demo session keeps its progress in memory only (see lib/demoMode.ts).
+    if (isDemoMode()) return;
 
     (async () => {
       await supabase.from('lesson_progress').upsert({
@@ -746,6 +806,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
     setLessonProgress(prevP => ({ ...prevP, [lessonId]: updatedProgress }));
 
+    if (isDemoMode()) return;
+
     (async () => {
       await supabase.from('lesson_attempts').insert({
         parent_id: user!.id,
@@ -782,6 +844,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const newDue = nextSrsDueDate(newStreak);
     const updated = { ...prev, srsCorrectStreak: newStreak, srsDueAt: newDue };
     setLessonProgress(prevP => ({ ...prevP, [lessonId]: updated }));
+    if (isDemoMode()) return;
     (async () => {
       await supabase.from('lesson_progress').update({
         srs_correct_streak: newStreak,
