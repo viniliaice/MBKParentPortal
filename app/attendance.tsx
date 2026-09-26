@@ -1,14 +1,23 @@
-import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React, { useMemo, useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import AuroraBackground from '@/components/AuroraBackground';
+import { Card } from '@/components/Card';
+import { ChildSelector } from '@/components/ChildSelector';
+import { EmptyState } from '@/components/EmptyState';
+import { ScreenHeader } from '@/components/ScreenHeader';
 import { useApp } from '@/context/AppContext';
+import { useColors } from '@/hooks/useColors';
+import type { Colors } from '@/hooks/useColors';
 
-const STATUS_COLOR = { present: '#2ECC71', absent: '#FF5370', late: '#F59E0B' };
-const STATUS_ICON = { present: 'checkmark-circle', absent: 'close-circle', late: 'time' } as const;
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function statusTones(c: Colors) {
+  return { present: c.accent, absent: c.destructive, late: c.warning } as const;
+}
+
+const STATUS_ICON = { present: 'checkmark-circle', absent: 'close-circle', late: 'time' } as const;
 
 function getMonthDays(year: number, month: number): (number | null)[] {
   const firstDay = new Date(year, month, 1).getDay();
@@ -20,15 +29,20 @@ function getMonthDays(year: number, month: number): (number | null)[] {
 }
 
 export default function AttendanceScreen() {
-  const { attendance, students } = useApp();
-  const insets = useSafeAreaInsets();
-  const [selectedStudent, setSelectedStudent] = useState(students[0]?.id);
+  const { attendance, students, selectedStudent, refresh } = useApp();
+  const c = useColors();
   const [calYear, setCalYear] = useState(new Date().getFullYear());
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
-  const topPad = Platform.OS === 'web' ? 67 : insets.top;
+  const [refreshing, setRefreshing] = useState(false);
 
-  const records = attendance.filter(a => a.studentId === selectedStudent)
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const tones = statusTones(c);
+  // The child chosen on the dashboard/marks is the child shown here too.
+  const records = useMemo(
+    () => attendance
+      .filter(a => a.studentId === selectedStudent?.id)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    [attendance, selectedStudent?.id],
+  );
 
   const present = records.filter(r => r.status === 'present').length;
   const absent = records.filter(r => r.status === 'absent').length;
@@ -37,11 +51,9 @@ export default function AttendanceScreen() {
 
   const attendanceByDate = useMemo(() => {
     const map = new Map<string, 'present' | 'absent' | 'late'>();
-    for (const r of attendance.filter(a => a.studentId === selectedStudent)) {
-      map.set(r.date, r.status);
-    }
+    for (const r of records) map.set(r.date, r.status);
     return map;
-  }, [attendance, selectedStudent]);
+  }, [records]);
 
   const days = getMonthDays(calYear, calMonth);
   const monthLabel = new Date(calYear, calMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -57,102 +69,131 @@ export default function AttendanceScreen() {
     else setCalMonth(m => m + 1);
   };
 
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await refresh();
+    setRefreshing(false);
+  };
+
   return (
     <AuroraBackground>
       <View style={{ flex: 1 }}>
-        <View style={[styles.header, { paddingTop: topPad + 12 }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Attendance</Text>
-          <View style={{ width: 36 }} />
-        </View>
+        <ScreenHeader
+          title="Attendance"
+          onBack={() => router.back()}
+          subtitle={selectedStudent ? `${selectedStudent.name} · ${selectedStudent.grade}` : undefined}
+        />
 
-        <View style={styles.studentRow}>
-          {students.map(s => (
-            <TouchableOpacity key={s.id} style={[styles.studentBtn, selectedStudent === s.id && { borderColor: s.avatarColor, backgroundColor: `${s.avatarColor}22` }]} onPress={() => setSelectedStudent(s.id)} activeOpacity={0.8}>
-              <Text style={[styles.studentBtnText, selectedStudent === s.id && { color: s.avatarColor }]}>{s.name.split(' ')[0]}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <ChildSelector />
 
-        <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: Platform.OS === 'web' ? 34 : 20 }}>
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryCircle}>
-              <Text style={[styles.summaryPct, { color: pct >= 80 ? '#2ECC71' : '#F59E0B' }]}>{pct}%</Text>
-              <Text style={styles.summaryPctLabel}>Attendance</Text>
-            </View>
-            <View style={{ flex: 1, gap: 10 }}>
-              {[
-                { status: 'present' as const, count: present },
-                { status: 'absent' as const, count: absent },
-                { status: 'late' as const, count: late },
-              ].map(({ status, count }) => (
-                <View key={status} style={styles.summaryRow}>
-                  <Ionicons name={STATUS_ICON[status]} size={16} color={STATUS_COLOR[status]} />
-                  <Text style={styles.summaryLabel}>{status.charAt(0).toUpperCase() + status.slice(1)}</Text>
-                  <Text style={[styles.summaryCount, { color: STATUS_COLOR[status] }]}>{count}</Text>
+        <ScrollView
+          contentContainerStyle={{ padding: 20, paddingBottom: 48 }}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.primary} colors={[c.primary]} />
+          }
+        >
+          {students.length === 0 ? (
+            <EmptyState
+              icon="people-outline"
+              title="No children linked yet"
+              message="Attendance appears here once the school office links your children to your account."
+            />
+          ) : records.length === 0 ? (
+            <EmptyState
+              icon="calendar-outline"
+              title="No attendance recorded yet"
+              message="Daily attendance for this child will appear here."
+            />
+          ) : (
+            <>
+              <Card style={styles.summaryCard}>
+                <View style={[styles.summaryCircle, { borderColor: c.border, backgroundColor: c.surfaceMuted }]}>
+                  <Text style={[styles.summaryPct, { color: pct >= 80 ? c.accent : c.warning }]}>{pct}%</Text>
+                  <Text style={[styles.summaryPctLabel, { color: c.textSecondary }]}>attendance</Text>
+                </View>
+                <View style={{ flex: 1, gap: 10 }}>
+                  {([
+                    { status: 'present' as const, count: present },
+                    { status: 'absent' as const, count: absent },
+                    { status: 'late' as const, count: late },
+                  ]).map(({ status, count }) => (
+                    <View key={status} style={styles.summaryRow}>
+                      <Ionicons name={STATUS_ICON[status]} size={16} color={tones[status]} />
+                      <Text style={[styles.summaryLabel, { color: c.textSecondary }]}>
+                        {status.charAt(0).toUpperCase() + status.slice(1)}
+                      </Text>
+                      <Text style={[styles.summaryCount, { color: tones[status] }]}>{count}</Text>
+                    </View>
+                  ))}
+                </View>
+              </Card>
+
+              <Card style={styles.calendarCard}>
+                <View style={styles.calHeader}>
+                  <TouchableOpacity onPress={prevMonth} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Previous month">
+                    <Ionicons name="chevron-back" size={20} color={c.textSecondary} />
+                  </TouchableOpacity>
+                  <Text style={[styles.calMonthLabel, { color: c.foreground }]}>{monthLabel}</Text>
+                  <TouchableOpacity onPress={nextMonth} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Next month">
+                    <Ionicons name="chevron-forward" size={20} color={c.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.calDayHeaders}>
+                  {DAYS.map(d => <Text key={d} style={[styles.calDayHeader, { color: c.textDim }]}>{d}</Text>)}
+                </View>
+                <View style={styles.calGrid}>
+                  {days.map((d, i) => {
+                    if (d === null) return <View key={`e-${i}`} style={styles.calCell} />;
+                    const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                    const status = attendanceByDate.get(dateStr);
+                    const isToday = d === today.getDate() && calMonth === today.getMonth() && calYear === today.getFullYear();
+                    return (
+                      <View key={dateStr} style={styles.calCell}>
+                        <View
+                          style={[
+                            styles.calDayCircle,
+                            isToday && { borderColor: c.primary, borderWidth: 2 },
+                            status === 'present' && { borderColor: c.accent, borderWidth: 1.5 },
+                            status === 'absent' && { borderColor: c.destructive, borderWidth: 1.5 },
+                            status === 'late' && { borderColor: c.warning, borderWidth: 1.5 },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.calDayText,
+                              { color: c.textBody },
+                              isToday && { color: c.primary, fontWeight: '800' },
+                              status === 'present' && { color: c.accent },
+                              status === 'absent' && { color: c.destructive },
+                              status === 'late' && { color: c.warning },
+                            ]}
+                          >
+                            {d}
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              </Card>
+
+              <Text style={[styles.sectionTitle, { color: c.textSecondary }]}>Recent records</Text>
+              {records.slice(0, 10).map(rec => (
+                <View key={rec.id} style={[styles.recRow, { borderBottomColor: c.border }]}>
+                  <View style={[styles.statusIcon, { backgroundColor: c.surfaceMuted }]}>
+                    <Ionicons name={STATUS_ICON[rec.status]} size={20} color={tones[rec.status]} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.recDate, { color: c.foreground }]}>
+                      {new Date(rec.date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                    </Text>
+                    {rec.note ? <Text style={[styles.recNote, { color: c.textSecondary }]}>{rec.note}</Text> : null}
+                  </View>
+                  <Text style={[styles.recStatus, { color: tones[rec.status] }]}>{rec.status}</Text>
                 </View>
               ))}
-            </View>
-          </View>
-
-          <View style={styles.calendarCard}>
-            <View style={styles.calHeader}>
-              <TouchableOpacity onPress={prevMonth} activeOpacity={0.7}>
-                <Ionicons name="chevron-back" size={20} color="#8892B0" />
-              </TouchableOpacity>
-              <Text style={styles.calMonthLabel}>{monthLabel}</Text>
-              <TouchableOpacity onPress={nextMonth} activeOpacity={0.7}>
-                <Ionicons name="chevron-forward" size={20} color="#8892B0" />
-              </TouchableOpacity>
-            </View>
-            <View style={styles.calDayHeaders}>
-              {DAYS.map(d => <Text key={d} style={styles.calDayHeader}>{d}</Text>)}
-            </View>
-            <View style={styles.calGrid}>
-              {days.map((d, i) => {
-                if (d === null) return <View key={`e-${i}`} style={styles.calCell} />;
-                const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-                const status = attendanceByDate.get(dateStr);
-                const isToday = d === today.getDate() && calMonth === today.getMonth() && calYear === today.getFullYear();
-                return (
-                  <View key={dateStr} style={styles.calCell}>
-                    <View style={[
-                      styles.calDayCircle,
-                      isToday && { borderColor: '#3D5AFE', borderWidth: 2 },
-                      status === 'present' && { backgroundColor: 'rgba(46,204,113,0.25)', borderColor: '#2ECC71' },
-                      status === 'absent' && { backgroundColor: 'rgba(255,83,112,0.25)', borderColor: '#FF5370' },
-                      status === 'late' && { backgroundColor: 'rgba(245,158,11,0.25)', borderColor: '#F59E0B' },
-                    ]}>
-                      <Text style={[
-                        styles.calDayText,
-                        isToday && { color: '#3D5AFE', fontWeight: '800' },
-                        status === 'present' && { color: '#2ECC71' },
-                        status === 'absent' && { color: '#FF5370' },
-                        status === 'late' && { color: '#F59E0B' },
-                      ]}>{d}</Text>
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-
-          <Text style={styles.sectionTitle}>Recent Records</Text>
-          {records.slice(0, 10).map(rec => (
-            <View key={rec.id} style={styles.recRow}>
-              <View style={[styles.statusIcon, { backgroundColor: `${STATUS_COLOR[rec.status]}22` }]}>
-                <Ionicons name={STATUS_ICON[rec.status]} size={20} color={STATUS_COLOR[rec.status]} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.recDate}>{new Date(rec.date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</Text>
-                {rec.note ? <Text style={styles.recNote}>{rec.note}</Text> : null}
-              </View>
-              <Text style={[styles.recStatus, { color: STATUS_COLOR[rec.status] }]}>{rec.status}</Text>
-            </View>
-          ))}
-          {records.length === 0 && <Text style={styles.emptyText}>No records found</Text>}
+            </>
+          )}
         </ScrollView>
       </View>
     </AuroraBackground>
@@ -160,33 +201,26 @@ export default function AttendanceScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 12 },
-  backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: '#FFFFFF' },
-  studentRow: { flexDirection: 'row', paddingHorizontal: 20, gap: 10, marginBottom: 16 },
-  studentBtn: { flex: 1, paddingVertical: 10, borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.1)', alignItems: 'center' },
-  studentBtnText: { fontSize: 14, fontWeight: '700', color: '#8892B0' },
-  summaryCard: { backgroundColor: 'rgba(20,29,58,0.9)', borderRadius: 18, padding: 20, flexDirection: 'row', alignItems: 'center', gap: 20, marginBottom: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
-  summaryCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.1)' },
+  summaryCard: { flexDirection: 'row', alignItems: 'center', gap: 20, marginBottom: 20 },
+  summaryCircle: { width: 84, height: 84, borderRadius: 42, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
   summaryPct: { fontSize: 22, fontWeight: '800' },
-  summaryPctLabel: { fontSize: 9, color: '#8892B0' },
+  summaryPctLabel: { fontSize: 10 },
   summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  summaryLabel: { flex: 1, fontSize: 13, color: '#8892B0' },
+  summaryLabel: { flex: 1, fontSize: 13 },
   summaryCount: { fontSize: 16, fontWeight: '700' },
-  sectionTitle: { fontSize: 14, fontWeight: '700', color: '#8892B0', marginBottom: 10, letterSpacing: 0.5 },
-  recRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
+  sectionTitle: { fontSize: 12, fontWeight: '700', letterSpacing: 0.6, marginBottom: 10, marginTop: 4 },
+  recRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1 },
   statusIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  recDate: { fontSize: 14, fontWeight: '600', color: '#FFFFFF' },
-  recNote: { fontSize: 12, color: '#8892B0', marginTop: 2 },
+  recDate: { fontSize: 14, fontWeight: '600' },
+  recNote: { fontSize: 12, marginTop: 2 },
   recStatus: { fontSize: 12, fontWeight: '700', textTransform: 'capitalize' },
-  emptyText: { color: '#4A5080', textAlign: 'center', paddingVertical: 20 },
-  calendarCard: { backgroundColor: 'rgba(20,29,58,0.9)', borderRadius: 18, padding: 16, marginBottom: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
-  calHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  calMonthLabel: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
-  calDayHeaders: { flexDirection: 'row', marginBottom: 8 },
-  calDayHeader: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '600', color: '#4A5080' },
+  calendarCard: { marginBottom: 20, gap: 4 },
+  calHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  calMonthLabel: { fontSize: 16, fontWeight: '700' },
+  calDayHeaders: { flexDirection: 'row', marginBottom: 6 },
+  calDayHeader: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '600' },
   calGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   calCell: { width: '14.28%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center', padding: 2 },
-  calDayCircle: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 0 },
-  calDayText: { fontSize: 13, fontWeight: '600', color: '#CCCCCC' },
+  calDayCircle: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  calDayText: { fontSize: 13, fontWeight: '600' },
 });

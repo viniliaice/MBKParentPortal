@@ -1,10 +1,11 @@
-import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   supabase,
   type SupabaseStudent,
   type SupabaseExam,
   type SupabaseAnnouncement,
+  type SupabaseAcademicYear,
   type SupabaseMessage,
   type SupabaseContact,
   type SupabaseLessonProgress,
@@ -14,11 +15,16 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import type { HomeworkItem, AttendanceRecord, AppMessage } from '@/data/mockData';
 import { computeMasteryLevel, nextSrsDueDate } from '@/lib/mastery';
+import { computePendingReports, type PendingReport } from '@/lib/reportSelectors';
 
 export type AttemptSummary = { accuracyPct: number; completedAt: string | null };
 
 const PROGRESS_KEY = '@mbk_learning_progress';
 const GAMIFICATION_KEY = '@mbk_gamification';
+/** The child the parent last looked at, so the app reopens on the same one. */
+const SELECTED_CHILD_KEY = '@mbk_selected_child';
+/** When the parent last opened the announcements list — drives the "new" marker. */
+const ANNOUNCEMENTS_SEEN_KEY = '@mbk_announcements_seen';
 
 const DEFAULT_GAMIFICATION: GamificationState = {
   currentStreak: 0, longestStreak: 0, lastLessonDate: null,
@@ -134,13 +140,29 @@ export interface ComputedResult {
 
 interface AppContextType {
   loading: boolean;
+  /** Reloads everything from Supabase — used by pull-to-refresh and retry. */
+  refresh: () => Promise<void>;
+  /** Set when the children query failed, so screens can offer a retry instead of an empty list. */
+  error: string | null;
   students: StudentData[];
+  /** The child every screen shows: home, marks, attendance. Null until the first load. */
+  selectedStudentId: string | null;
+  selectedStudent: StudentData | null;
+  setSelectedStudentId: (id: string) => void;
   homework: HomeworkItem[];
   attendance: AttendanceRecord[];
   results: ComputedResult[];
+  /** Subjects the school has started but not published — never shown as a zero. */
+  pendingReports: PendingReport[];
+  academicYears: SupabaseAcademicYear[];
   announcements: AnnouncementData[];
+  announcementsSeenAt: string | null;
+  markAnnouncementsSeen: () => void;
+  newAnnouncementsCount: number;
   messages: AppMessage[];
   unreadCount: number;
+  /** Unread messages plus announcements the parent has not opened yet. */
+  unreadCommunications: number;
   markRead: (id: string) => void;
   /**
    * Sends a message through the send_message() RPC: sender, sender name and
@@ -160,7 +182,7 @@ interface AppContextType {
   gamification: GamificationState;
 }
 
-interface StudentData {
+export interface StudentData {
   id: string;
   name: string;
   className: string;
@@ -168,7 +190,7 @@ interface StudentData {
   avatarColor: string;
 }
 
-interface AnnouncementData {
+export interface AnnouncementData {
   id: string;
   title: string;
   body: string;
@@ -313,6 +335,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [gamification, setGamification] = useState<GamificationState>(DEFAULT_GAMIFICATION);
   const [gamRespExists, setGamRespExists] = useState(false);
   const [contacts, setContacts] = useState<SupabaseContact[]>([]);
+  const [academicYears, setAcademicYears] = useState<SupabaseAcademicYear[]>([]);
+  const [selectedStudentId, setSelectedStudentIdState] = useState<string | null>(null);
+  const [announcementsSeenAt, setAnnouncementsSeenAt] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const attendanceMap = useMemo(() => {
     const map = new Map<string, Map<string, { present: number; total: number }>>();
@@ -335,153 +361,240 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return [...monthly, ...midterm, ...final];
   }, [rawExams, attendanceMap]);
 
-  useEffect(() => {
-    if (!user) { setLoading(false); return; }
+  /**
+   * Exams that exist but cannot be turned into a report yet. Derived from the same
+   * rows the calculations above use, so a subject can only be in one place: either it
+   * has a computed result, or the app says what is still missing.
+   */
+  const pendingReports = useMemo(() => computePendingReports(rawExams), [rawExams]);
 
-    (async () => {
-      const [studentResp, progResp, gamResp, attemptsResp] = await Promise.all([
-        supabase.from('students').select('*').eq('parentId', user.id),
-        supabase.from('lesson_progress').select('*').eq('parent_id', user.id),
-        supabase.from('gamification').select('*').eq('parent_id', user.id).maybeSingle(),
-        supabase.from('lesson_attempts').select('*').eq('parent_id', user.id).order('completed_at', { ascending: true }),
+  const loadData = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!user) { setLoading(false); return; }
+    if (!silent) setLoading(true);
+    setError(null);
+
+    const [studentResp, progResp, gamResp, attemptsResp] = await Promise.all([
+      supabase.from('students').select('*').eq('parentId', user.id),
+      supabase.from('lesson_progress').select('*').eq('parent_id', user.id),
+      supabase.from('gamification').select('*').eq('parent_id', user.id).maybeSingle(),
+      supabase.from('lesson_attempts').select('*').eq('parent_id', user.id).order('completed_at', { ascending: true }),
+    ]);
+
+    if (studentResp.error || !studentResp.data) {
+      setError('We could not load your children’s records. Please check your connection and try again.');
+      setLoading(false);
+      return;
+    }
+    const mapped = (studentResp.data as SupabaseStudent[]).map((s, i) => ({
+      id: s.id,
+      name: s.name,
+      className: s.className,
+      grade: parseClassName(s.className).grade,
+      avatarColor: getAvatarColor(i),
+    }));
+    setStudents(mapped);
+
+    if (progResp.data) {
+      const progressMap: Record<string, LessonProgress> = {};
+      for (const row of progResp.data as SupabaseLessonProgress[]) {
+        progressMap[row.lesson_id] = {
+          lessonId: row.lesson_id,
+          completed: row.completed,
+          xpEarned: row.xp_earned,
+          correctCount: row.correct_count,
+          totalActivities: row.total_activities,
+          completedAt: row.completed_at || undefined,
+          activityResults: row.activity_results || [],
+          masteryLevel: row.mastery_level ?? 0,
+          attemptsCount: row.attempts_count ?? 0,
+          lastAttemptAt: row.last_attempt_at ?? null,
+          srsDueAt: row.srs_due_at ?? null,
+          srsCorrectStreak: row.srs_correct_streak ?? 0,
+        };
+      }
+      setLessonProgress(progressMap);
+    }
+
+    if (attemptsResp.data) {
+      const attemptsMap: Record<string, AttemptSummary[]> = {};
+      for (const row of attemptsResp.data as SupabaseLessonAttempt[]) {
+        if (!attemptsMap[row.lesson_id]) attemptsMap[row.lesson_id] = [];
+        attemptsMap[row.lesson_id].push({
+          accuracyPct: row.accuracy_pct,
+          completedAt: row.completed_at,
+        });
+      }
+      setLessonAttempts(attemptsMap);
+    }
+
+    if (gamResp.data) {
+      const g = gamResp.data as SupabaseGamification;
+      setGamification({
+        currentStreak: g.current_streak,
+        longestStreak: g.longest_streak,
+        lastLessonDate: g.last_lesson_date,
+        level: g.level,
+        totalXPEarned: g.total_xp_earned,
+        dailyRewardClaimed: g.daily_reward_claimed,
+        dailyRewardDate: g.daily_reward_date,
+      });
+      setGamRespExists(true);
+    }
+
+    const studentIds = mapped.map(s => s.id);
+    if (studentIds.length > 0) {
+      const [examResult, attResult, inboxResult, sentResult, annResult, hwResult, yearResult] = await Promise.all([
+        supabase.from('exams').select('*').in('studentId', studentIds),
+        supabase.from('attendance').select('*').in('studentId', studentIds),
+        supabase.from('messages').select('*').eq('recipientId', user.id),
+        supabase.from('messages').select('*').eq('senderId', user.id),
+        supabase.from('announcements').select('*'),
+        supabase.from('homework').select('*').in('studentId', studentIds),
+        supabase.from('academic_years').select('*').order('startDate', { ascending: false }),
       ]);
 
-      if (studentResp.error || !studentResp.data) { setLoading(false); return; }
-      const mapped = (studentResp.data as SupabaseStudent[]).map((s, i) => ({
-        id: s.id,
-        name: s.name,
-        className: s.className,
-        grade: parseClassName(s.className).grade,
-        avatarColor: getAvatarColor(i),
-      }));
-      setStudents(mapped);
-
-      if (progResp.data) {
-        const progressMap: Record<string, LessonProgress> = {};
-        for (const row of progResp.data as SupabaseLessonProgress[]) {
-          progressMap[row.lesson_id] = {
-            lessonId: row.lesson_id,
-            completed: row.completed,
-            xpEarned: row.xp_earned,
-            correctCount: row.correct_count,
-            totalActivities: row.total_activities,
-            completedAt: row.completed_at || undefined,
-            activityResults: row.activity_results || [],
-            masteryLevel: row.mastery_level ?? 0,
-            attemptsCount: row.attempts_count ?? 0,
-            lastAttemptAt: row.last_attempt_at ?? null,
-            srsDueAt: row.srs_due_at ?? null,
-            srsCorrectStreak: row.srs_correct_streak ?? 0,
-          };
-        }
-        setLessonProgress(progressMap);
+      if (examResult.data) {
+        setRawExams(examResult.data as SupabaseExam[]);
+      }
+      if (attResult.data) {
+        setRawAttendance((attResult.data as any[]).map(a => ({
+          id: a.id,
+          studentId: a.studentId,
+          date: a.date,
+          status: a.status as 'present' | 'absent' | 'late',
+          note: a.note || '',
+        })));
+      }
+      if (hwResult.data) {
+        setHomework((hwResult.data as any[]).map(h => ({
+          id: h.id,
+          studentId: h.studentId,
+          subject: h.subject,
+          title: h.title,
+          dueDate: h.dueDate,
+          status: h.status as 'pending' | 'submitted' | 'graded',
+          description: h.description || '',
+        })));
+      }
+      if (yearResult.data) {
+        setAcademicYears(yearResult.data as SupabaseAcademicYear[]);
       }
 
-      if (attemptsResp.data) {
-        const attemptsMap: Record<string, AttemptSummary[]> = {};
-        for (const row of attemptsResp.data as SupabaseLessonAttempt[]) {
-          if (!attemptsMap[row.lesson_id]) attemptsMap[row.lesson_id] = [];
-          attemptsMap[row.lesson_id].push({
-            accuracyPct: row.accuracy_pct,
-            completedAt: row.completed_at,
-          });
-        }
-        setLessonAttempts(attemptsMap);
+      const allMessages: AppMessage[] = [];
+      if (inboxResult.data) {
+        allMessages.push(...(inboxResult.data as SupabaseMessage[]).map(m => ({
+          id: m.id,
+          senderId: m.senderId,
+          senderName: m.senderName ?? 'School',
+          recipientId: m.recipientId,
+          recipientName: m.recipientName ?? 'You',
+          subject: m.subject,
+          body: m.body,
+          isRead: m.readAt !== null,
+          createdAt: m.createdAt,
+          isInbox: true,
+        })));
       }
-
-      if (gamResp.data) {
-        const g = gamResp.data as SupabaseGamification;
-        setGamification({
-          currentStreak: g.current_streak,
-          longestStreak: g.longest_streak,
-          lastLessonDate: g.last_lesson_date,
-          level: g.level,
-          totalXPEarned: g.total_xp_earned,
-          dailyRewardClaimed: g.daily_reward_claimed,
-          dailyRewardDate: g.daily_reward_date,
-        });
-        setGamRespExists(true);
+      if (sentResult.data) {
+        allMessages.push(...(sentResult.data as SupabaseMessage[]).map(m => ({
+          id: m.id,
+          senderId: m.senderId,
+          senderName: m.senderName ?? 'You',
+          recipientId: m.recipientId,
+          recipientName: m.recipientName ?? 'Recipient',
+          subject: m.subject,
+          body: m.body,
+          isRead: true,
+          createdAt: m.createdAt,
+          isInbox: false,
+        })));
       }
+      allMessages.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      setMessages(allMessages);
 
-      const studentIds = mapped.map(s => s.id);
-      if (studentIds.length > 0) {
-        const [examResult, attResult, inboxResult, sentResult, annResult, hwResult] = await Promise.all([
-          supabase.from('exams').select('*').in('studentId', studentIds),
-          supabase.from('attendance').select('*').in('studentId', studentIds),
-          supabase.from('messages').select('*').eq('recipientId', user.id),
-          supabase.from('messages').select('*').eq('senderId', user.id),
-          supabase.from('announcements').select('*'),
-          supabase.from('homework').select('*').in('studentId', studentIds),
-        ]);
-
-        if (examResult.data) {
-          setRawExams(examResult.data as SupabaseExam[]);
-        }
-        if (attResult.data) {
-          setRawAttendance((attResult.data as any[]).map(a => ({
-            id: a.id,
-            studentId: a.studentId,
-            date: a.date,
-            status: a.status as 'present' | 'absent' | 'late',
-            note: a.note || '',
-          })));
-        }
-        if (hwResult.data) {
-          setHomework((hwResult.data as any[]).map(h => ({
-            id: h.id,
-            studentId: h.studentId,
-            subject: h.subject,
-            title: h.title,
-            dueDate: h.dueDate,
-            status: h.status as 'pending' | 'submitted' | 'graded',
-            description: h.description || '',
-          })));
-        }
-
-        const allMessages: AppMessage[] = [];
-        if (inboxResult.data) {
-          allMessages.push(...(inboxResult.data as SupabaseMessage[]).map(m => ({
-            id: m.id,
-            senderId: m.senderId,
-            senderName: m.senderName ?? 'School',
-            recipientId: m.recipientId,
-            recipientName: m.recipientName ?? 'You',
-            subject: m.subject,
-            body: m.body,
-            isRead: m.readAt !== null,
-            createdAt: m.createdAt,
-            isInbox: true,
-          })));
-        }
-        if (sentResult.data) {
-          allMessages.push(...(sentResult.data as SupabaseMessage[]).map(m => ({
-            id: m.id,
-            senderId: m.senderId,
-            senderName: m.senderName ?? 'You',
-            recipientId: m.recipientId,
-            recipientName: m.recipientName ?? 'Recipient',
-            subject: m.subject,
-            body: m.body,
-            isRead: true,
-            createdAt: m.createdAt,
-            isInbox: false,
-          })));
-        }
-        allMessages.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-        setMessages(allMessages);
-
-        if (annResult.data) {
-          setAnnouncements((annResult.data as SupabaseAnnouncement[]).map(a => ({
-            id: a.id, title: a.className ? `${a.className} Announcement` : 'Announcement',
-            body: a.message, date: a.createdAt, category: 'general' as const, className: a.className,
-          })));
-        }
+      if (annResult.data) {
+        const mappedAnnouncements: AnnouncementData[] = (annResult.data as SupabaseAnnouncement[]).map(a => ({
+          id: a.id,
+          // The table has no title column: the class is the closest thing to one, and
+          // a school-wide notice is simply the school's.
+          title: a.className ? `${a.className} announcement` : 'School announcement',
+          body: a.message,
+          date: a.createdAt,
+          category: 'general' as const,
+          className: a.className,
+        }));
+        mappedAnnouncements.sort((a, b) => b.date.localeCompare(a.date));
+        setAnnouncements(mappedAnnouncements);
       }
-      setLoading(false);
-    })();
+    }
+    setLoading(false);
   }, [user]);
 
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const refresh = useCallback(async () => {
+    // Pull-to-refresh must not swap the screen for a skeleton, hence `silent`.
+    await loadData({ silent: true });
+  }, [loadData]);
+
+  // Keep the remembered child valid: a stored id wins while that child is still in
+  // the family, otherwise the first child is shown.
+  useEffect(() => {
+    if (students.length === 0) {
+      setSelectedStudentIdState(null);
+      return;
+    }
+    let cancelled = false;
+    AsyncStorage.getItem(SELECTED_CHILD_KEY)
+      .catch(() => null)
+      .then(stored => {
+        if (cancelled) return;
+        setSelectedStudentIdState(current => {
+          const candidate = current ?? stored;
+          return candidate && students.some(s => s.id === candidate) ? candidate : students[0].id;
+        });
+      });
+    return () => { cancelled = true; };
+  }, [students]);
+
+  const setSelectedStudentId = useCallback((id: string) => {
+    setSelectedStudentIdState(id);
+    AsyncStorage.setItem(SELECTED_CHILD_KEY, id).catch(() => {
+      // The switch still applies for this session even if it cannot be stored.
+    });
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.getItem(ANNOUNCEMENTS_SEEN_KEY)
+      .then(value => { if (value) setAnnouncementsSeenAt(value); })
+      .catch(() => {
+        // Without the marker every announcement simply reads as new.
+      });
+  }, []);
+
+  const markAnnouncementsSeen = useCallback(() => {
+    const now = new Date().toISOString();
+    setAnnouncementsSeenAt(now);
+    AsyncStorage.setItem(ANNOUNCEMENTS_SEEN_KEY, now).catch(() => {
+      // Best effort: the marker resets on the next launch.
+    });
+  }, []);
+
+  const selectedStudent = useMemo(
+    () => students.find(s => s.id === selectedStudentId) ?? students[0] ?? null,
+    [students, selectedStudentId],
+  );
+
   const unreadCount = messages.filter(m => m.isInbox && !m.isRead).length;
+
+  const newAnnouncementsCount = useMemo(
+    () => announcements.filter(a => !announcementsSeenAt || a.date > announcementsSeenAt).length,
+    [announcements, announcementsSeenAt],
+  );
+
+  const unreadCommunications = unreadCount + newAnnouncementsCount;
 
   const markRead = async (id: string) => {
     setMessages(prev => prev.map(m => m.id === id ? { ...m, isRead: true } : m));
@@ -685,8 +798,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      loading, students, homework, attendance: rawAttendance, results, announcements,
-      messages, unreadCount, markRead, sendMessage, contacts, loadContacts,
+      loading, refresh, error, students,
+      selectedStudentId, selectedStudent, setSelectedStudentId,
+      homework, attendance: rawAttendance, results, pendingReports, academicYears,
+      announcements, announcementsSeenAt, markAnnouncementsSeen, newAnnouncementsCount,
+      messages, unreadCount, unreadCommunications, markRead, sendMessage, contacts, loadContacts,
       lessonProgress, lessonAttempts, saveLessonProgress, saveLessonAttempt, updateSrsState, getTotalXP, gamification,
     }}>
       {children}

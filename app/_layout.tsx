@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   configureNotificationHandling,
@@ -21,15 +21,42 @@ import {
 } from '@expo-google-fonts/inter';
 import { DancingScript_400Regular, DancingScript_700Bold } from '@expo-google-fonts/dancing-script';
 import { Stack, useRouter, useSegments } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { AppProvider } from '@/context/AppContext';
+import { ThemeProvider, useTheme } from '@/context/ThemeContext';
+import { useColors } from '@/hooks/useColors';
 
 SplashScreen.preventAutoHideAsync();
+
+/**
+ * A phone-first app on a wide screen keeps a readable column: without this, a tablet
+ * or a desktop browser stretches phone-sized cards across the full width and the line
+ * lengths become hard to read. Phones are narrower than the cap, so nothing changes
+ * there.
+ */
+const CONTENT_MAX_WIDTH = 720;
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  frame: { flex: 1, alignItems: 'center' },
+  column: { flex: 1, width: '100%', maxWidth: CONTENT_MAX_WIDTH },
+});
 
 const queryClient = new QueryClient();
 
 const VALID_SEGMENTS = new Set(['(tabs)', 'login', 'homework', 'attendance', 'results', 'lesson', 'quizzes', 'legal', 'account']);
+
+function AppFrame({ children }: { children: React.ReactNode }) {
+  const c = useColors();
+
+  return (
+    <View style={[styles.frame, { backgroundColor: c.background }]}>
+      <View style={[styles.column, { backgroundColor: c.background }]}>{children}</View>
+    </View>
+  );
+}
 
 function AuthGate() {
   const { user, loading } = useAuth();
@@ -52,6 +79,7 @@ function AuthGate() {
 
 function RootLayoutNav() {
   const { user } = useAuth();
+  const { isDark } = useTheme();
   const router = useRouter();
 
   // Foreground presentation + Android channel. Runs once.
@@ -103,6 +131,8 @@ function RootLayoutNav() {
 
   return (
     <>
+      {/* Readable clock and battery in both appearances. */}
+      <StatusBar style={isDark ? 'light' : 'dark'} />
       <AuthGate />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="login" />
@@ -139,19 +169,24 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>
-          <AuthProvider>
-            <AppProvider>
-              <GestureHandlerRootView>
-                <KeyboardProvider>
-                  <RootLayoutNav />
-                </KeyboardProvider>
-              </GestureHandlerRootView>
-            </AppProvider>
-          </AuthProvider>
-        </QueryClientProvider>
-      </ErrorBoundary>
+      {/* The theme sits above the error boundary: the fallback screen is themed too. */}
+      <ThemeProvider>
+        <ErrorBoundary>
+          <QueryClientProvider client={queryClient}>
+            <AuthProvider>
+              <AppProvider>
+                <GestureHandlerRootView style={styles.root}>
+                  <KeyboardProvider>
+                    <AppFrame>
+                      <RootLayoutNav />
+                    </AppFrame>
+                  </KeyboardProvider>
+                </GestureHandlerRootView>
+              </AppProvider>
+            </AuthProvider>
+          </QueryClientProvider>
+        </ErrorBoundary>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }

@@ -3,7 +3,7 @@ type: Concept
 title: Notifications
 description: Push notification registration via Expo Notifications + Supabase edge function forwarding.
 tags: [communication, push]
-timestamp: 2026-07-24T14:00:00Z
+timestamp: 2026-09-25T00:00:00Z
 ---
 
 # Registration
@@ -23,6 +23,15 @@ A Supabase database trigger (`on_new_message`, `on_new_announcement`) calls the
   tokens (deduped), and sends batches of up to 100 via Expo Push API
 
 The edge function lives at `supabase/functions/send-notification/`.
+
+# Tapping a notification
+
+`routeForNotification()` in `lib/notifications.ts` maps the payload's `type` to a route:
+
+| `type` | Opens |
+|--------|-------|
+| `new_message` | `/(tabs)/messages` |
+| `new_announcement` | `/(tabs)/messages?view=announcements` — the notice, not the dashboard |
 
 # Homework Reminders
 
