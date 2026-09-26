@@ -116,7 +116,9 @@ describe('report selectors', { skip }, () => {
     assert.equal(selectors.academicMonthLabel(11), 'Dec');
     assert.equal(selectors.academicMonthLabel(0), 'Jan');
     assert.equal(selectors.academicMonthLabel(5), 'Jun');
-    assert.deepEqual(selectors.ACADEMIC_YEAR_MONTHS, ['Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun']);
+    assert.equal(selectors.academicMonthLabel(6), 'Jul');
+    assert.equal(selectors.academicMonthLabel(7), 'Aug');
+    assert.deepEqual(selectors.ACADEMIC_YEAR_MONTHS, ['Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug']);
   });
 
   it('keeps the same month of two different years apart', () => {
@@ -260,5 +262,427 @@ describe('report selectors', { skip }, () => {
     ], 'a');
     assert.deepEqual(childD.latestPending.map(p => p.id), ['p-dec']);
     assert.equal(childD.pending.length, 3, 'the full list is still available');
+  });
+
+  describe('date handling — date is authoritative for exam month', () => {
+    it('derives month from date regardless of stored month field', () => {
+      // Prompt regression case:
+      // month = "August", date = "2026-09-17" -> Expected: September
+      const assessmentA = {
+        subject: 'Science',
+        score: '20',
+        total: 20,
+        examType: 'Attendance',
+        month: 'August',
+        status: 'approved',
+        date: '2026-09-17',
+        assessmentLabel: 'ATTENDANCE',
+        entryState: 'scored',
+      };
+      assert.equal(selectors.getExamMonth(assessmentA), 'September');
+
+      // month = "September", date = "2026-09-17" -> Expected: September
+      const assessmentB = {
+        subject: 'Science',
+        score: '20',
+        total: 20,
+        examType: 'Attendance',
+        month: 'September',
+        status: 'approved',
+        date: '2026-09-17',
+        assessmentLabel: 'ATTENDANCE',
+        entryState: 'scored',
+      };
+      assert.equal(selectors.getExamMonth(assessmentB), 'September');
+
+      // date = 2026-08-15 -> August
+      assert.equal(selectors.getExamMonth({ month: 'September', date: '2026-08-15' }), 'August');
+      assert.equal(selectors.getExamMonth({ month: 'August', date: '2026-08-15' }), 'August');
+      assert.equal(selectors.getExamMonth('2026-08-15'), 'August');
+      assert.equal(selectors.getExamMonth('2026-09-17'), 'September');
+    });
+
+    it('falls back to stored month when date is missing or invalid', () => {
+      assert.equal(selectors.getExamMonth({ month: 'August', date: '' }), 'August');
+      assert.equal(selectors.getExamMonth({ month: 'September', date: 'invalid-date' }), 'September');
+    });
+  });
+
+  describe('assessment classification and mapping', () => {
+    it('maps Homework, Attendance, Classwork, Discipline to CA', () => {
+      assert.equal(selectors.classifyAssessment({ examType: 'Homework' }), 'ca');
+      assert.equal(selectors.classifyAssessment({ examType: 'Attendance' }), 'ca');
+      assert.equal(selectors.classifyAssessment({ examType: 'Classwork' }), 'ca');
+      assert.equal(selectors.classifyAssessment({ examType: 'Discipline' }), 'ca');
+      assert.equal(selectors.classifyAssessment({ assessmentLabel: 'ATTENDANCE' }), 'ca');
+      assert.equal(selectors.classifyAssessment({ assessmentLabel: 'AKHLAAQ' }), 'ca');
+      assert.equal(selectors.classifyAssessment({ assessmentLabel: 'HW1' }), 'ca');
+      assert.equal(selectors.classifyAssessment({ assessmentLabel: 'CPW2' }), 'ca');
+      assert.equal(selectors.classifyAssessment({ examType: 'CA' }), 'ca');
+    });
+
+    it('maps Quiz and Monthly Test to quiz (60% component)', () => {
+      assert.equal(selectors.classifyAssessment({ examType: 'Quiz' }), 'quiz');
+      assert.equal(selectors.classifyAssessment({ examType: 'Monthly Test' }), 'quiz');
+      assert.equal(selectors.classifyAssessment({ assessmentLabel: 'MT' }), 'quiz');
+      assert.equal(selectors.classifyAssessment({ assessmentLabel: 'QUIZ' }), 'quiz');
+      assert.equal(selectors.classifyAssessment({ assessmentLabel: 'MONTHLY TEST' }), 'quiz');
+    });
+  });
+
+  describe('CA and Quiz weighting', () => {
+    it('verifies Homework, Attendance, Classwork, and Discipline all contribute to 40% CA', () => {
+      const exams = [
+        { studentId: 's1', subject: 'Science', examType: 'Homework', score: 30, total: 40, date: '2026-09-10' },
+        { studentId: 's1', subject: 'Science', examType: 'Attendance', score: 20, total: 20, date: '2026-09-17' },
+        { studentId: 's1', subject: 'Science', examType: 'Classwork', score: 35, total: 40, date: '2026-09-12' },
+        { studentId: 's1', subject: 'Science', examType: 'Discipline', score: 15, total: 20, date: '2026-09-20' },
+        { studentId: 's1', subject: 'Science', examType: 'Quiz', score: 50, total: 60, date: '2026-09-25' },
+      ];
+
+      const calc = selectors.calculateMonthlyScore(exams);
+      assert.ok(calc);
+      // Total CA = 30 + 20 + 35 + 15 = 100 out of 40 + 20 + 40 + 20 = 120 -> 83%
+      assert.equal(calc.caScore, 100);
+      assert.equal(calc.caTotal, 120);
+      assert.equal(calc.caPct, 83);
+      // Quiz = 50 / 60 -> 83%
+      assert.equal(calc.quizScore, 50);
+      assert.equal(calc.quizTotal, 60);
+      assert.equal(calc.quizPct, 83);
+      // Final = round(83 * 0.4 + 83 * 0.6) = 83
+      assert.equal(calc.finalScore, 83);
+    });
+
+    it('verifies Quiz/Monthly Test contributes 60% and CA contributes 40%', () => {
+      // Case 1: CA = 100%, Quiz = 0% -> Final should be 40
+      const caOnlyScored = [
+        { studentId: 's1', subject: 'Maths', examType: 'Homework', score: 40, total: 40, date: '2026-09-10' },
+        { studentId: 's1', subject: 'Maths', examType: 'Quiz', score: 0, total: 60, date: '2026-09-25' },
+      ];
+      const calc1 = selectors.calculateMonthlyScore(caOnlyScored);
+      assert.equal(calc1.caPct, 100);
+      assert.equal(calc1.quizPct, 0);
+      assert.equal(calc1.finalScore, 40); // 100 * 0.4 + 0 * 0.6 = 40
+
+      // Case 2: CA = 0%, Quiz = 100% -> Final should be 60
+      const quizOnlyScored = [
+        { studentId: 's1', subject: 'Maths', examType: 'Homework', score: 0, total: 40, date: '2026-09-10' },
+        { studentId: 's1', subject: 'Maths', examType: 'Quiz', score: 60, total: 60, date: '2026-09-25' },
+      ];
+      const calc2 = selectors.calculateMonthlyScore(quizOnlyScored);
+      assert.equal(calc2.caPct, 0);
+      assert.equal(calc2.quizPct, 100);
+      assert.equal(calc2.finalScore, 60); // 0 * 0.4 + 100 * 0.6 = 60
+    });
+  });
+
+  describe('handling missing CA components', () => {
+    it('normalizes CA across available components without penalizing missing ones with zero', () => {
+      // Exact prompt example:
+      // Homework: 35/40
+      // Attendance: 20/20
+      // Classwork: 34/40
+      // Discipline: not entered
+      // Quiz: 42/60
+      const exams = [
+        { studentId: 's1', subject: 'Science', examType: 'Homework', score: 35, total: 40, date: '2026-09-10' },
+        { studentId: 's1', subject: 'Science', examType: 'Attendance', score: 20, total: 20, date: '2026-09-15' },
+        { studentId: 's1', subject: 'Science', examType: 'Classwork', score: 34, total: 40, date: '2026-09-20' },
+        { studentId: 's1', subject: 'Science', examType: 'Quiz', score: 42, total: 60, date: '2026-09-25' },
+      ];
+
+      const calc = selectors.calculateMonthlyScore(exams);
+      assert.ok(calc);
+      // CA score: 35 + 20 + 34 = 89
+      assert.equal(calc.caScore, 89);
+      // CA total: 40 + 20 + 40 = 100 (Discipline is not added as 0/something)
+      assert.equal(calc.caTotal, 100);
+      assert.equal(calc.caPct, 89);
+      // Quiz score: 42, total: 60 -> 70%
+      assert.equal(calc.quizScore, 42);
+      assert.equal(calc.quizTotal, 60);
+      assert.equal(calc.quizPct, 70);
+      // Final Monthly Score = round(89 * 0.4 + 70 * 0.6) = round(35.6 + 42) = 78
+      assert.equal(calc.finalScore, 78);
+    });
+
+    it('updates monthly result correctly once Discipline is entered', () => {
+      const initialExams = [
+        { studentId: 's1', subject: 'Science', examType: 'Homework', score: 35, total: 40, date: '2026-09-10' },
+        { studentId: 's1', subject: 'Science', examType: 'Attendance', score: 20, total: 20, date: '2026-09-15' },
+        { studentId: 's1', subject: 'Science', examType: 'Classwork', score: 34, total: 40, date: '2026-09-20' },
+        { studentId: 's1', subject: 'Science', examType: 'Quiz', score: 42, total: 60, date: '2026-09-25' },
+      ];
+
+      const initialCalc = selectors.calculateMonthlyScore(initialExams);
+      assert.equal(initialCalc.finalScore, 78);
+
+      // Now teacher enters Discipline: 12/20
+      const disciplineExam = {
+        studentId: 's1',
+        subject: 'Science',
+        examType: 'Discipline',
+        assessmentLabel: 'AKHLAAQ',
+        score: 12,
+        total: 20,
+        date: '2026-09-22',
+      };
+
+      const updatedCalc = selectors.calculateMonthlyScore([...initialExams, disciplineExam]);
+      // CA score: 89 + 12 = 101 out of 100 + 20 = 120 -> 101/120 = 84.17% -> 84%
+      assert.equal(updatedCalc.caScore, 101);
+      assert.equal(updatedCalc.caTotal, 120);
+      assert.equal(updatedCalc.caPct, 84);
+      // Quiz score: 42/60 -> 70%
+      assert.equal(updatedCalc.quizScore, 42);
+      assert.equal(updatedCalc.quizTotal, 60);
+      assert.equal(updatedCalc.quizPct, 70);
+      // Final: round(84 * 0.4 + 70 * 0.6) = round(33.6 + 42) = 76
+      assert.equal(updatedCalc.finalScore, 76);
+
+      const computedResults = selectors.computeMonthlyResults([...initialExams, disciplineExam]);
+      assert.equal(computedResults.length, 1);
+      assert.equal(computedResults[0].score, 76);
+      assert.equal(computedResults[0].components[0].score, 84);
+      assert.equal(computedResults[0].components[1].score, 70);
+    });
+  });
+
+  describe('attendance regression', () => {
+    it('treats Attendance 20/20 dated 2026-09-17 as CA in September, NOT a standalone 100% exam', () => {
+      const attendanceRecord = {
+        studentId: 's1',
+        subject: 'Science',
+        score: '20',
+        total: 20,
+        examType: 'Attendance',
+        month: 'August', // Stale month
+        status: 'approved',
+        date: '2026-09-17',
+        assessmentLabel: 'ATTENDANCE',
+        entryState: 'scored',
+      };
+
+      // 1. Belongs to September based on the date
+      assert.equal(selectors.getExamMonth(attendanceRecord), 'September');
+
+      // 2. Classified as CA
+      assert.equal(selectors.classifyAssessment(attendanceRecord), 'ca');
+
+      // 3. Alone without a quiz, does NOT produce a standalone 100% monthly exam
+      const resultsAlone = selectors.computeMonthlyResults([attendanceRecord]);
+      assert.equal(resultsAlone.length, 0, 'Attendance alone does not produce a 100% monthly result');
+
+      // Reported as pending quiz
+      const pending = selectors
+        .computePendingReports([attendanceRecord])
+        .filter(p => p.period === 'monthly');
+      assert.equal(pending.length, 1);
+      assert.equal(pending[0].period, 'monthly');
+      assert.equal(pending[0].month, 'September');
+      assert.deepEqual(pending[0].missing, ['quiz']);
+
+      // 4. With Quiz, contributes to CA 40%
+      const quizRecord = {
+        studentId: 's1',
+        subject: 'Science',
+        score: 50,
+        total: 60,
+        examType: 'Quiz',
+        month: 'September',
+        status: 'approved',
+        date: '2026-09-25',
+        assessmentLabel: 'MT',
+        entryState: 'scored',
+      };
+
+      const results = selectors.computeMonthlyResults([attendanceRecord, quizRecord]);
+      assert.equal(results.length, 1);
+      const res = results[0];
+      assert.equal(res.month, 'September');
+      assert.equal(res.examType, 'monthly');
+      // CA is 20/20 = 100%. Quiz is 50/60 = 83%. Final = round(100 * 0.4 + 83 * 0.6) = round(40 + 49.8) = 90
+      assert.equal(res.score, 90);
+      assert.equal(res.components[0].weight, 40);
+      assert.equal(res.components[0].score, 100);
+      assert.equal(res.components[1].weight, 60);
+      assert.equal(res.components[1].score, 83);
+    });
+  });
+
+  describe('monthly filtering by authoritative date', () => {
+    it('ensures August assessments appear under August and September under September', () => {
+      const augRecord = {
+        id: 'res-aug',
+        studentId: 's1',
+        subject: 'Science',
+        score: 85,
+        total: 100,
+        examType: 'monthly',
+        month: 'September', // Stale month in record
+        date: '2026-08-15',
+        components: [],
+      };
+      const sepRecord = {
+        id: 'res-sep',
+        studentId: 's1',
+        subject: 'Science',
+        score: 78,
+        total: 100,
+        examType: 'monthly',
+        month: 'August', // Stale month in record
+        date: '2026-09-17',
+        components: [],
+      };
+
+      const results = [augRecord, sepRecord];
+
+      // August filter returns only the August-dated record (even though its month says 'September')
+      const augFiltered = selectors.filterByMonth(results, 'Aug', '2025-2026');
+      assert.deepEqual(augFiltered.map(r => r.id), ['res-aug']);
+
+      // Also works when passed full name 'August'
+      const augustFiltered = selectors.filterByMonth(results, 'August', '2025-2026');
+      assert.deepEqual(augustFiltered.map(r => r.id), ['res-aug']);
+
+      // September filter returns only the September-dated record (even though its month says 'August')
+      const sepFiltered = selectors.filterByMonth(results, 'Sep', '2026-2027');
+      assert.deepEqual(sepFiltered.map(r => r.id), ['res-sep']);
+
+      const septemberFiltered = selectors.filterByMonth(results, 'September', '2026-2027');
+      assert.deepEqual(septemberFiltered.map(r => r.id), ['res-sep']);
+    });
+  });
+
+  describe('end-to-end monthly report verification for parent UI', () => {
+    it('verifies exact fields, pending states, and updates between calculation and UI', () => {
+      // Step 1: Database record with stale month
+      // month = "August", date = "2026-09-17"
+      const caRecords = [
+        {
+          id: 'exam-hw',
+          studentId: 'pupil-1',
+          subject: 'Science',
+          examType: 'Homework',
+          assessmentLabel: 'HW1',
+          score: '35',
+          total: 40,
+          month: 'August', // Stale
+          date: '2026-09-17',
+          status: 'approved',
+          entryState: 'scored',
+        },
+        {
+          id: 'exam-att',
+          studentId: 'pupil-1',
+          subject: 'Science',
+          examType: 'Attendance',
+          assessmentLabel: 'ATTENDANCE',
+          score: 20,
+          total: 20,
+          month: 'August', // Stale
+          date: '2026-09-17',
+          status: 'approved',
+          entryState: 'scored',
+        },
+        {
+          id: 'exam-cw',
+          studentId: 'pupil-1',
+          subject: 'Science',
+          examType: 'Classwork',
+          assessmentLabel: 'CPW1',
+          score: 34,
+          total: 40,
+          month: 'August', // Stale
+          date: '2026-09-17',
+          status: 'approved',
+          entryState: 'scored',
+        },
+      ];
+
+      // Verification: Without quiz, no standalone result is published
+      const resultsBeforeQuiz = selectors.computeMonthlyResults(caRecords);
+      assert.equal(resultsBeforeQuiz.length, 0);
+
+      // Pending state: Quiz is missing
+      const pendingBefore = selectors
+        .computePendingReports(caRecords)
+        .filter(p => p.period === 'monthly');
+      assert.equal(pendingBefore.length, 1);
+      assert.equal(pendingBefore[0].month, 'September', 'Derived month is September');
+      assert.equal(pendingBefore[0].subject, 'Science');
+      assert.deepEqual(pendingBefore[0].missing, ['quiz']);
+
+      // UI View Scoping: Pending item appears in September view, NOT August view
+      const inSepView = selectors.pendingForView(pendingBefore, 'monthly', { month: 'Sep', yearKey: '2026-2027' });
+      assert.equal(inSepView.length, 1);
+      const inAugView = selectors.pendingForView(pendingBefore, 'monthly', { month: 'Aug', yearKey: '2025-2026' });
+      assert.equal(inAugView.length, 0);
+
+      // Step 2: Quiz is entered
+      const quizRecord = {
+        id: 'exam-qz',
+        studentId: 'pupil-1',
+        subject: 'Science',
+        examType: 'Quiz',
+        assessmentLabel: 'MT',
+        score: 42,
+        total: 60,
+        month: 'September',
+        date: '2026-09-25',
+        status: 'approved',
+        entryState: 'scored',
+      };
+
+      const allRecords = [...caRecords, quizRecord];
+
+      // Verification: Pending resolved
+      const pendingAfter = selectors
+        .computePendingReports(allRecords)
+        .filter(p => p.period === 'monthly');
+      assert.equal(pendingAfter.length, 0);
+
+      // Computed Results
+      const resultsAfterQuiz = selectors.computeMonthlyResults(allRecords);
+      assert.equal(resultsAfterQuiz.length, 1);
+      const res = resultsAfterQuiz[0];
+
+      // Month attribution
+      assert.equal(res.month, 'September');
+      assert.equal(res.subject, 'Science');
+
+      // Final percentage: round(89 * 0.4 + 70 * 0.6) = 78
+      assert.equal(res.score, 78);
+      assert.equal(res.total, 100);
+
+      // Breakdown components:
+      // CA component: 40% weight, 89% score
+      const caComponent = res.components.find(c => c.weight === 40);
+      assert.ok(caComponent);
+      assert.equal(caComponent.score, 89);
+      assert.equal(caComponent.total, 100);
+
+      // Quiz component: 60% weight, 70% score
+      const quizComponent = res.components.find(c => c.weight === 60);
+      assert.ok(quizComponent);
+      assert.equal(quizComponent.score, 70);
+      assert.equal(quizComponent.total, 100);
+
+      // UI helper assertions:
+      // Label formatted on SubjectResultCard
+      assert.equal(selectors.formatMonthYear(res.date, res.month), 'Sep 2026');
+      // Grade band
+      assert.equal(selectors.gradeFor(res.score, res.total), 'B+');
+      // Month counts and filters for MarksScreen chips
+      const counts = selectors.monthlyMonthCounts(resultsAfterQuiz);
+      assert.equal(counts.get('Sep'), 1);
+      assert.equal(counts.get('Aug'), undefined);
+
+      const filteredSep = selectors.filterByMonth(resultsAfterQuiz, 'Sep', '2026-2027');
+      assert.equal(filteredSep.length, 1);
+      const filteredAug = selectors.filterByMonth(resultsAfterQuiz, 'Aug', '2025-2026');
+      assert.equal(filteredAug.length, 0);
+    });
   });
 });
