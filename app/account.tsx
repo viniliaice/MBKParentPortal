@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Alert, TextInput, ActivityIndicator,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput, ActivityIndicator,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import AuroraBackground from '@/components/AuroraBackground';
+import { ScreenHeader } from '@/components/ScreenHeader';
+import { useColors, type Colors } from '@/hooks/useColors';
 import { useAuth } from '@/context/AuthContext';
 import { requestAccountDeletion } from '@/lib/accountDeletion';
 import { ACCOUNT_DELETION_URL, PRIVACY_POLICY_URL, SUPPORT_EMAIL } from '@/constants/legal';
@@ -28,8 +29,8 @@ import { ACCOUNT_DELETION_URL, PRIVACY_POLICY_URL, SUPPORT_EMAIL } from '@/const
  */
 export default function AccountScreen() {
   const { user } = useAuth();
-  const insets = useSafeAreaInsets();
-  const topPad = Platform.OS === 'web' ? 67 : insets.top;
+  const c = useColors();
+  const styles = useMemo(() => makeStyles(c), [c]);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -76,13 +77,7 @@ export default function AccountScreen() {
   return (
     <AuroraBackground>
       <View style={{ flex: 1 }}>
-        <View style={[styles.header, { paddingTop: topPad + 12 }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Close Account</Text>
-          <View style={{ width: 36 }} />
-        </View>
+        <ScreenHeader title="Close account" onBack={() => router.back()} />
 
         <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
           <View style={styles.card}>
@@ -107,7 +102,7 @@ export default function AccountScreen() {
               'Your device’s push-notification token',
             ].map(line => (
               <View key={line} style={styles.row}>
-                <Ionicons name="close-circle-outline" size={16} color="#FF5370" />
+                <Ionicons name="close-circle-outline" size={16} color={c.destructive} />
                 <Text style={styles.rowText}>{line}</Text>
               </View>
             ))}
@@ -120,7 +115,7 @@ export default function AccountScreen() {
               'Attendance, homework and exam marks',
             ].map(line => (
               <View key={line} style={styles.row}>
-                <Ionicons name="information-circle-outline" size={16} color="#F59E0B" />
+                <Ionicons name="information-circle-outline" size={16} color={c.warning} />
                 <Text style={styles.rowText}>{line}</Text>
               </View>
             ))}
@@ -136,16 +131,16 @@ export default function AccountScreen() {
             value={reason}
             onChangeText={setReason}
             placeholder="Moving away, duplicate account…"
-            placeholderTextColor="#4A5080"
+            placeholderTextColor={c.placeholder}
             multiline
           />
 
           <TouchableOpacity style={styles.dangerBtn} onPress={confirmRequest} disabled={busy} activeOpacity={0.85}>
             {busy ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <ActivityIndicator color={c.destructiveForeground} />
             ) : (
               <>
-                <Ionicons name="paper-plane-outline" size={18} color="#FFFFFF" />
+                <Ionicons name="paper-plane-outline" size={18} color={c.destructiveForeground} />
                 <Text style={styles.dangerText}>Send the request to the school</Text>
               </>
             )}
@@ -153,14 +148,14 @@ export default function AccountScreen() {
 
           {PRIVACY_POLICY_URL ? (
             <TouchableOpacity style={styles.secondaryBtn} onPress={openPolicy} activeOpacity={0.85}>
-              <Ionicons name="open-outline" size={18} color="#3D5AFE" />
+              <Ionicons name="open-outline" size={18} color={c.primary} />
               <Text style={styles.secondaryText}>Read the school’s privacy policy</Text>
             </TouchableOpacity>
           ) : null}
 
           {ACCOUNT_DELETION_URL ? (
             <TouchableOpacity style={styles.secondaryBtn} onPress={openWebResource} activeOpacity={0.85}>
-              <Ionicons name="open-outline" size={18} color="#3D5AFE" />
+              <Ionicons name="open-outline" size={18} color={c.primary} />
               <Text style={styles.secondaryText}>Deletion information on the web</Text>
             </TouchableOpacity>
           ) : (
@@ -175,21 +170,18 @@ export default function AccountScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 12 },
-  backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 17, fontWeight: '700', color: '#FFFFFF' },
+const makeStyles = (c: Colors) => StyleSheet.create({
   body: { paddingHorizontal: 20, paddingBottom: 40, gap: 14 },
-  card: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 16, padding: 16, gap: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
-  cardTitle: { fontSize: 14, fontWeight: '700', color: '#FFFFFF', marginBottom: 2 },
-  mono: { fontSize: 13, color: '#9BA6C6' },
+  card: { backgroundColor: c.surface, borderRadius: 16, padding: 16, gap: 8, borderWidth: 1, borderColor: c.border },
+  cardTitle: { fontSize: 14, fontWeight: '700', color: c.foreground, marginBottom: 2 },
+  mono: { fontSize: 13, color: c.textSecondary },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  rowText: { flex: 1, fontSize: 13, color: '#C7CFE6', lineHeight: 19 },
-  hint: { fontSize: 12.5, color: '#8892B0', lineHeight: 19, marginTop: 4 },
-  sectionLabel: { fontSize: 11, letterSpacing: 0.8, color: '#8892B0', fontWeight: '700', marginTop: 6 },
-  input: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 14, padding: 14, color: '#FFFFFF', minHeight: 92, textAlignVertical: 'top', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
-  dangerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#FF5370', borderRadius: 14, paddingVertical: 15 },
-  dangerText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
-  secondaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: 'rgba(61,90,254,0.14)', borderRadius: 14, paddingVertical: 14 },
-  secondaryText: { color: '#3D5AFE', fontSize: 14, fontWeight: '600' },
+  rowText: { flex: 1, fontSize: 13, color: c.textBody, lineHeight: 19 },
+  hint: { fontSize: 12.5, color: c.textSecondary, lineHeight: 19, marginTop: 4 },
+  sectionLabel: { fontSize: 11, letterSpacing: 0.8, color: c.textSecondary, fontWeight: '700', marginTop: 6 },
+  input: { backgroundColor: c.inputBackground, borderRadius: 14, padding: 14, color: c.foreground, minHeight: 92, textAlignVertical: 'top', borderWidth: 1, borderColor: c.inputBorder },
+  dangerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: c.destructive, borderRadius: 14, paddingVertical: 15 },
+  dangerText: { color: c.destructiveForeground, fontSize: 15, fontWeight: '700' },
+  secondaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: c.primarySoft, borderRadius: 14, paddingVertical: 14 },
+  secondaryText: { color: c.primary, fontSize: 14, fontWeight: '600' },
 });
