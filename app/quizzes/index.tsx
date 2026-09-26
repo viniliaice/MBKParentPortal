@@ -1,29 +1,32 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Platform, RefreshControl, ActivityIndicator,
+  RefreshControl, ActivityIndicator,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import AuroraBackground from '@/components/AuroraBackground';
+import { Card } from '@/components/Card';
+import { ChildSelector } from '@/components/ChildSelector';
+import { EmptyState } from '@/components/EmptyState';
+import { ScreenHeader } from '@/components/ScreenHeader';
 import { supabase, type Quiz } from '@/lib/supabase';
 import { useApp } from '@/context/AppContext';
+import { useColors, type Colors } from '@/hooks/useColors';
 
 type QuizWithCount = Quiz & { question_count: number };
 
 export default function QuizListScreen() {
-  const { students } = useApp();
-  const insets = useSafeAreaInsets();
-  const topPad = Platform.OS === 'web' ? 67 : insets.top;
-  const [selectedStudent, setSelectedStudent] = useState(students[0]?.id);
+  const { students, selectedStudent, selectedStudentId } = useApp();
+  const c = useColors();
+  const styles = useMemo(() => makeStyles(c), [c]);
   const [quizzes, setQuizzes] = useState<QuizWithCount[]>([]);
   const [attemptedQuizIds, setAttemptedQuizIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const student = students.find(s => s.id === selectedStudent);
+  const student = selectedStudent;
 
   const fetchQuizzes = useCallback(async () => {
     if (!student) return;
@@ -44,8 +47,8 @@ export default function QuizListScreen() {
 
       const countMap = new Map<string, number>();
       if (countData) {
-        for (const c of countData) {
-          countMap.set(c.quizId, (countMap.get(c.quizId) || 0) + 1);
+        for (const row of countData) {
+          countMap.set(row.quizId, (countMap.get(row.quizId) || 0) + 1);
         }
       }
 
@@ -55,18 +58,18 @@ export default function QuizListScreen() {
       })));
     }
 
-    if (selectedStudent) {
+    if (student.id) {
       const { data: attempts } = await supabase
         .from('quiz_attempts')
         .select('quizId')
-        .eq('studentId', selectedStudent);
+        .eq('studentId', student.id);
       if (attempts) {
         setAttemptedQuizIds(new Set(attempts.map(a => a.quizId)));
       }
     }
 
     setLoading(false);
-  }, [student, selectedStudent]);
+  }, [student]);
 
   useEffect(() => {
     setLoading(true);
@@ -79,153 +82,117 @@ export default function QuizListScreen() {
     setRefreshing(false);
   };
 
-  const activeStudent = students.find(s => s.id === selectedStudent);
-
   return (
     <AuroraBackground>
       <View style={{ flex: 1 }}>
-        <View style={[styles.header, { paddingTop: topPad + 12 }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Quizzes</Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/learning')} style={styles.studyBtn}>
-              <Ionicons name="school-outline" size={18} color="#F59E0B" />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => router.push('/quizzes/history')} style={styles.historyBtn}>
-              <Ionicons name="time-outline" size={18} color="#8892B0" />
-            </TouchableOpacity>
-          </View>
-        </View>
+        <ScreenHeader
+          title="Quizzes"
+          onBack={() => router.back()}
+          subtitle={student ? `${student.name} · ${student.className}` : undefined}
+          right={
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity
+                onPress={() => router.push('/(tabs)/learning')}
+                style={[styles.iconBtn, { backgroundColor: c.surfaceMuted }]}
+                accessibilityRole="button"
+                accessibilityLabel="Open learning practice"
+              >
+                <Ionicons name="school-outline" size={18} color={c.warning} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => router.push('/quizzes/history')}
+                style={[styles.iconBtn, { backgroundColor: c.surfaceMuted }]}
+                accessibilityRole="button"
+                accessibilityLabel="Quiz history"
+              >
+                <Ionicons name="time-outline" size={18} color={c.textSecondary} />
+              </TouchableOpacity>
+            </View>
+          }
+        />
 
-        <View style={styles.studentRow}>
-          {students.map(s => (
-            <TouchableOpacity
-              key={s.id}
-              style={[styles.studentBtn, selectedStudent === s.id && { borderColor: s.avatarColor, backgroundColor: `${s.avatarColor}22` }]}
-              onPress={() => setSelectedStudent(s.id)}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.studentBtnText, selectedStudent === s.id && { color: s.avatarColor }]}>
-                {s.name.split(' ')[0]}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <ChildSelector dense style={{ marginBottom: 12 }} />
 
         {loading ? (
-          <View style={styles.center}><ActivityIndicator size="large" color="#3D5AFE" /></View>
+          <View style={styles.center}><ActivityIndicator size="large" color={c.primary} /></View>
+        ) : students.length === 0 ? (
+          <EmptyState
+            icon="people-outline"
+            title="No children linked yet"
+            message="Quizzes appear here once the school office links your children to your account."
+          />
         ) : (
           <ScrollView
-            contentContainerStyle={{ padding: 20, paddingBottom: Platform.OS === 'web' ? 34 : 20 }}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3D5AFE" />}
+            contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.primary} colors={[c.primary]} />}
           >
-            {activeStudent && (
-              <View style={styles.infoRow}>
-                <Ionicons name="school-outline" size={16} color="#8892B0" />
-                <Text style={styles.infoText}>{activeStudent.className}</Text>
-              </View>
-            )}
-
-            <Text style={styles.sectionTitle}>
-              {quizzes.length > 0 ? `${quizzes.length} Active Quiz${quizzes.length !== 1 ? 'zes' : ''}` : 'No Active Quizzes'}
+            <Text style={[styles.sectionTitle, { color: c.textSecondary }]}>
+              {quizzes.length > 0 ? `${quizzes.length} active quiz${quizzes.length !== 1 ? 'zes' : ''}` : 'No active quizzes'}
             </Text>
 
             {quizzes.map(q => {
               const attempted = attemptedQuizIds.has(q.id);
               return attempted ? (
-                <View key={q.id} style={[styles.quizCard, styles.quizCardDone]}>
+                <Card key={q.id} style={[styles.quizCard, { opacity: 0.65 }]}>
                   <View style={styles.quizCardTop}>
-                    <View style={[styles.quizBadge, styles.quizBadgeDone]}>
-                      <Ionicons name="checkmark-circle" size={14} color="#2ECC71" />
-                      <Text style={[styles.quizBadgeText, { color: '#2ECC71' }]}>Completed</Text>
+                    <View style={[styles.quizBadge, { backgroundColor: c.surfaceMuted }]}>
+                      <Ionicons name="checkmark-circle" size={14} color={c.accent} />
+                      <Text style={[styles.quizBadgeText, { color: c.accent }]}>Completed</Text>
                     </View>
                   </View>
-                  <Text style={[styles.quizTitle, styles.textMuted]}>{q.title}</Text>
-                  <View style={styles.quizMeta}>
-                    <View style={styles.metaItem}>
-                      <Ionicons name="document-text-outline" size={13} color="#8892B0" />
-                      <Text style={styles.metaText}>{q.question_count} question{q.question_count !== 1 ? 's' : ''}</Text>
-                    </View>
-                    {q.timeLimit ? (
-                      <View style={styles.metaItem}>
-                        <Ionicons name="timer-outline" size={13} color="#8892B0" />
-                        <Text style={styles.metaText}>{q.timeLimit} min</Text>
-                      </View>
-                    ) : null}
-                    <View style={styles.metaItem}>
-                      <Ionicons name="calendar-outline" size={13} color="#8892B0" />
-                      <Text style={styles.metaText}>
-                        Due {new Date(q.dueDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                      </Text>
-                    </View>
-                  </View>
+                  <Text style={[styles.quizTitle, { color: c.textSecondary }]}>{q.title}</Text>
+                  <QuizMeta quiz={q} />
                   <TouchableOpacity
-                    style={styles.viewResultsBtn}
+                    style={[styles.viewResultsBtn, { backgroundColor: c.primarySoft }]}
                     onPress={async () => {
                       try {
                         const { data } = await supabase
                           .from('quiz_attempts')
                           .select('id')
                           .eq('quizId', q.id)
-                          .eq('studentId', selectedStudent)
+                          .eq('studentId', selectedStudentId)
                           .maybeSingle();
                         if (data) router.push({ pathname: '/quizzes/results', params: { id: data.id } });
-                      } catch (e) {
-                        console.error('View Results error', e);
+                      } catch {
+                        // A missing attempt simply means the button does nothing yet.
                       }
                     }}
+                    accessibilityRole="button"
                   >
-                    <Text style={styles.viewResultsText}>View Results</Text>
-                    <Ionicons name="chevron-forward" size={14} color="#3D5AFE" />
+                    <Text style={[styles.viewResultsText, { color: c.primary }]}>View results</Text>
+                    <Ionicons name="chevron-forward" size={14} color={c.primary} />
                   </TouchableOpacity>
-                </View>
+                </Card>
               ) : (
                 <TouchableOpacity
                   key={q.id}
-                  style={styles.quizCard}
-                  onPress={() => router.push({ pathname: '/quizzes/[id]', params: { id: q.id, studentId: selectedStudent } })}
-                  activeOpacity={0.8}
+                  style={[styles.quizCard, { backgroundColor: c.surface, borderColor: c.border }]}
+                  onPress={() => router.push({ pathname: '/quizzes/[id]', params: { id: q.id, studentId: selectedStudentId ?? '' } })}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
                 >
                   <View style={styles.quizCardTop}>
-                    <View style={[styles.quizBadge, styles.quizBadgeActive]}>
-                      <Ionicons name="pencil" size={14} color="#3D5AFE" />
-                      <Text style={[styles.quizBadgeText, { color: '#3D5AFE' }]}>Take Quiz</Text>
+                    <View style={[styles.quizBadge, { backgroundColor: c.primarySoft }]}>
+                      <Ionicons name="pencil" size={14} color={c.primary} />
+                      <Text style={[styles.quizBadgeText, { color: c.primary }]}>Take quiz</Text>
                     </View>
                   </View>
-                  <Text style={styles.quizTitle}>{q.title}</Text>
-                  <View style={styles.quizMeta}>
-                    <View style={styles.metaItem}>
-                      <Ionicons name="document-text-outline" size={13} color="#8892B0" />
-                      <Text style={styles.metaText}>{q.question_count} question{q.question_count !== 1 ? 's' : ''}</Text>
-                    </View>
-                    {q.timeLimit ? (
-                      <View style={styles.metaItem}>
-                        <Ionicons name="timer-outline" size={13} color="#8892B0" />
-                        <Text style={styles.metaText}>{q.timeLimit} min</Text>
-                      </View>
-                    ) : null}
-                    <View style={styles.metaItem}>
-                      <Ionicons name="calendar-outline" size={13} color="#8892B0" />
-                      <Text style={styles.metaText}>
-                        Due {new Date(q.dueDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                      </Text>
-                    </View>
-                  </View>
-                  <LinearGradient colors={['#3D5AFE', '#00BCD4']} style={styles.startBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-                    <Text style={styles.startBtnText}>Start Quiz</Text>
+                  <Text style={[styles.quizTitle, { color: c.foreground }]}>{q.title}</Text>
+                  <QuizMeta quiz={q} />
+                  <LinearGradient colors={c.brandGradient} style={styles.startBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+                    <Text style={[styles.startBtnText, { color: c.onBrand }]}>Start quiz</Text>
                   </LinearGradient>
                 </TouchableOpacity>
               );
             })}
 
-            {quizzes.length === 0 && (
-              <View style={styles.empty}>
-                <Ionicons name="document-outline" size={48} color="#4A5080" />
-                <Text style={styles.emptyText}>No active quizzes right now</Text>
-              </View>
-            )}
+            {quizzes.length === 0 ? (
+              <EmptyState
+                icon="document-outline"
+                title="No active quizzes right now"
+                message="Quizzes set for this class will appear here while they are open."
+              />
+            ) : null}
           </ScrollView>
         )}
       </View>
@@ -233,35 +200,47 @@ export default function QuizListScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 12 },
-  backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: '#FFFFFF' },
-  historyBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
-  studyBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(245,158,11,0.12)', alignItems: 'center', justifyContent: 'center' },
-  studentRow: { flexDirection: 'row', paddingHorizontal: 20, gap: 10, marginBottom: 12 },
-  studentBtn: { flex: 1, paddingVertical: 10, borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.1)', alignItems: 'center' },
-  studentBtnText: { fontSize: 14, fontWeight: '700', color: '#8892B0' },
-  infoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16, paddingHorizontal: 4 },
-  infoText: { fontSize: 13, color: '#8892B0', fontWeight: '500' },
-  sectionTitle: { fontSize: 14, fontWeight: '700', color: '#8892B0', marginBottom: 12, letterSpacing: 0.5, paddingHorizontal: 4 },
-  quizCard: { backgroundColor: 'rgba(20,29,58,0.9)', borderRadius: 20, padding: 20, marginBottom: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
-  quizCardDone: { opacity: 0.55 },
-  textMuted: { color: '#8892B0' },
+function QuizMeta({ quiz }: { quiz: QuizWithCount }) {
+  const c = useColors();
+  const styles = useMemo(() => makeStyles(c), [c]);
+  return (
+    <View style={styles.quizMeta}>
+      <View style={styles.metaItem}>
+        <Ionicons name="document-text-outline" size={13} color={c.textSecondary} />
+        <Text style={[styles.metaText, { color: c.textSecondary }]}>
+          {quiz.question_count} question{quiz.question_count !== 1 ? 's' : ''}
+        </Text>
+      </View>
+      {quiz.timeLimit ? (
+        <View style={styles.metaItem}>
+          <Ionicons name="timer-outline" size={13} color={c.textSecondary} />
+          <Text style={[styles.metaText, { color: c.textSecondary }]}>{quiz.timeLimit} min</Text>
+        </View>
+      ) : null}
+      <View style={styles.metaItem}>
+        <Ionicons name="calendar-outline" size={13} color={c.textSecondary} />
+        <Text style={[styles.metaText, { color: c.textSecondary }]}>
+          Due {new Date(quiz.dueDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+const makeStyles = (c: Colors) => StyleSheet.create({
+  iconBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  sectionTitle: { fontSize: 12.5, fontWeight: '700', letterSpacing: 0.5, marginBottom: 12 },
+  quizCard: { borderRadius: 20, padding: 20, marginBottom: 14, borderWidth: 1 },
   quizCardTop: { flexDirection: 'row', justifyContent: 'flex-start', marginBottom: 10 },
   quizBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  quizBadgeActive: { backgroundColor: 'rgba(61,90,254,0.15)' },
-  quizBadgeDone: { backgroundColor: 'rgba(46,204,113,0.15)' },
   quizBadgeText: { fontSize: 11, fontWeight: '700' },
-  quizTitle: { fontSize: 18, fontWeight: '800', color: '#FFFFFF', marginBottom: 12 },
-  quizMeta: { flexDirection: 'row', gap: 16, marginBottom: 16 },
-  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  metaText: { fontSize: 12, color: '#8892B0' },
-  startBtn: { borderRadius: 14, paddingVertical: 14, alignItems: 'center' as const },
-  startBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
-  viewResultsBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 14, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(61,90,254,0.3)' },
-  viewResultsText: { color: '#3D5AFE', fontSize: 14, fontWeight: '600' },
+  quizTitle: { fontSize: 18, fontWeight: '800', marginBottom: 12 },
+  quizMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginBottom: 16 },
+  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  metaText: { fontSize: 12 },
+  startBtn: { borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+  startBtnText: { fontSize: 15, fontWeight: '700' },
+  viewResultsBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 14, borderRadius: 14 },
+  viewResultsText: { fontSize: 14, fontWeight: '600' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  empty: { alignItems: 'center', paddingVertical: 40, gap: 12 },
-  emptyText: { color: '#4A5080', fontSize: 15 },
 });

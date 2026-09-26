@@ -1,27 +1,46 @@
 import React from 'react';
-import { Platform, StyleSheet, useColorScheme, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { Tabs } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
+import { useApp } from '@/context/AppContext';
+import { useTheme } from '@/context/ThemeContext';
+import { useColors } from '@/hooks/useColors';
 
+/**
+ * The parent app's four destinations, in the order a parent needs them:
+ * home (how are my children doing), marks, messages, everything else.
+ *
+ * Learning is deliberately *not* a tab any more — it is practice material for the
+ * child, not one of the two questions the app exists to answer, so it lives under
+ * More. The route is unchanged, only its place in the bar.
+ */
 function TabLayout() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const c = useColors();
+  const { isDark } = useTheme();
+  const { unreadCommunications } = useApp();
   const isIOS = Platform.OS === 'ios';
   const isWeb = Platform.OS === 'web';
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#3D5AFE',
-        tabBarInactiveTintColor: '#8892B0',
+        tabBarActiveTintColor: c.primary,
+        tabBarInactiveTintColor: c.tabBarInactive,
         headerShown: false,
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        tabBarBadgeStyle: {
+          backgroundColor: c.destructive,
+          color: c.destructiveForeground,
+          fontSize: 10,
+          fontWeight: '700',
+        },
         tabBarStyle: {
           position: 'absolute',
-          backgroundColor: isIOS ? 'transparent' : '#0B1026',
+          backgroundColor: isIOS ? 'transparent' : c.tabBar,
           borderTopWidth: 1,
-          borderTopColor: 'rgba(255,255,255,0.08)',
+          borderTopColor: c.tabBarBorder,
           elevation: 0,
           ...(isWeb ? { height: 84 } : {}),
         },
@@ -29,12 +48,14 @@ function TabLayout() {
           isIOS ? (
             <BlurView
               intensity={80}
-              tint="dark"
+              tint={isDark ? 'dark' : 'light'}
               style={StyleSheet.absoluteFill}
             />
           ) : isWeb ? (
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: '#0B1026' }]} />
-          ) : null,
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: c.tabBar }]} />
+          ) : (
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: c.tabBar }]} />
+          ),
       }}
     >
       <Tabs.Screen
@@ -43,21 +64,21 @@ function TabLayout() {
           title: 'Home',
           tabBarIcon: ({ color, size }) =>
             isIOS ? (
-              <SymbolView name="house" tintColor={color} size={size} />
+              <SymbolView name="house.fill" tintColor={color} size={size} />
             ) : (
-              <Ionicons name="home-outline" size={size} color={color} />
+              <Ionicons name="home" size={size} color={color} />
             ),
         }}
       />
       <Tabs.Screen
-        name="learning"
+        name="marks"
         options={{
-          title: 'Learn',
+          title: 'Marks',
           tabBarIcon: ({ color, size }) =>
             isIOS ? (
-              <SymbolView name="book" tintColor={color} size={size} />
+              <SymbolView name="chart.bar.fill" tintColor={color} size={size} />
             ) : (
-              <Ionicons name="school-outline" size={size} color={color} />
+              <Ionicons name="bar-chart" size={size} color={color} />
             ),
         }}
       />
@@ -65,11 +86,12 @@ function TabLayout() {
         name="messages"
         options={{
           title: 'Messages',
+          tabBarBadge: unreadCommunications > 0 ? unreadCommunications : undefined,
           tabBarIcon: ({ color, size }) =>
             isIOS ? (
-              <SymbolView name="envelope" tintColor={color} size={size} />
+              <SymbolView name="envelope.fill" tintColor={color} size={size} />
             ) : (
-              <Ionicons name="mail-outline" size={size} color={color} />
+              <Ionicons name="mail" size={size} color={color} />
             ),
         }}
       />
@@ -79,12 +101,14 @@ function TabLayout() {
           title: 'More',
           tabBarIcon: ({ color, size }) =>
             isIOS ? (
-              <SymbolView name="square.grid.2x2" tintColor={color} size={size} />
+              <SymbolView name="ellipsis.circle" tintColor={color} size={size} />
             ) : (
-              <Ionicons name="grid-outline" size={size} color={color} />
+              <Ionicons name="ellipsis-horizontal-circle-outline" size={size} color={color} />
             ),
         }}
       />
+      {/* Practice material for the child: reachable from More, not a primary destination. */}
+      <Tabs.Screen name="learning" options={{ href: null }} />
     </Tabs>
   );
 }
