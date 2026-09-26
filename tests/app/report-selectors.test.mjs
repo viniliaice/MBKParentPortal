@@ -697,3 +697,127 @@ describe('report selectors', { skip }, () => {
     });
   });
 });
+
+describe('child month pills', { skip }, () => {
+  it('draws one pill per calendar month, Jan to Dec', () => {
+    assert.deepEqual(selectors.MONTH_NAMES, ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']);
+    assert.equal(selectors.academicMonthLabel(6), 'Jul', 'a summer report month is still a month');
+    assert.equal(selectors.academicMonthLabel(7), 'Aug');
+    assert.equal(selectors.FULL_MONTH_NAMES[8], 'September');
+  });
+
+  it('lights the months a child has marks for and no others', () => {
+    const results = [
+      // August has two subjects published; September has nothing entered at all.
+      monthlyResult('a', 'Maths', 80, '2026-08-14', 'Aug'),
+      monthlyResult('a', 'English', 62, '2026-08-18', 'Aug'),
+      monthlyResult('a', 'Maths', 74, '2025-10-09', 'Oct'),
+      monthlyResult('b', 'Maths', 90, '2026-08-20', 'Aug'),
+    ];
+
+    const pills = selectors.monthPillStates(results, 'a');
+    const state = label => pills.months.find(m => m.label === label);
+
+    assert.deepEqual(pills.months.map(m => m.label), selectors.MONTH_NAMES, 'twelve pills, Jan to Dec');
+    assert.equal(pills.yearKey, '2025-2026', 'the year of this child’s newest marks');
+    assert.equal(state('Aug').hasMarks, true);
+    assert.equal(state('Aug').count, 2, 'both published subjects, and nothing of child b’s');
+    assert.equal(state('Aug').year, 2026, 'Jan–Aug sit in the academic year’s second year');
+    assert.equal(state('Sep').hasMarks, false, 'a month with nothing entered must stay empty');
+    assert.equal(state('Oct').hasMarks, true);
+    assert.equal(state('Oct').year, 2025, 'Sep–Dec sit in the academic year’s first year');
+    assert.deepEqual(pills.months.filter(m => m.hasMarks).map(m => m.label), ['Aug', 'Oct']);
+    assert.equal(state('Jan').year, 2026);
+    assert.equal(state('Dec').year, 2025);
+  });
+
+  it('covers the school year that holds the latest report, not the device clock', () => {
+    const pills = selectors.monthPillStates(
+      [monthlyResult('a', 'Maths', 80, '2026-09-14', 'Sep')],
+      'a',
+    );
+    const state = label => pills.months.find(m => m.label === label);
+
+    assert.equal(pills.yearKey, '2026-2027');
+    assert.equal(state('Sep').year, 2026);
+    assert.equal(state('Sep').hasMarks, true);
+    assert.equal(state('Jan').year, 2027, 'January of the same school year');
+    assert.equal(state('Jan').hasMarks, false, 'and nothing published in it yet');
+  });
+
+  it('leaves every pill empty for a child with no monthly marks', () => {
+    const otherChild = [monthlyResult('b', 'Maths', 70, '2025-09-01', 'Sep')];
+
+    const pills = selectors.monthPillStates(otherChild, 'a');
+    assert.equal(pills.months.length, 12);
+    assert.deepEqual(pills.months.map(m => m.hasMarks), Array(12).fill(false));
+    assert.equal(pills.yearKey, '');
+
+    // With no results of their own the row still needs a year to hang on: the school's.
+    const withFallback = selectors.monthPillStates([], 'a', { fallbackYearKey: '2026-2027' });
+    assert.equal(withFallback.yearKey, '2026-2027');
+    assert.deepEqual(withFallback.months.map(m => m.hasMarks), Array(12).fill(false));
+    assert.equal(withFallback.months[0].year, 2027);
+    assert.equal(withFallback.months[8].year, 2026);
+  });
+
+  it('follows the year the screen is already showing', () => {
+    const results = [
+      monthlyResult('a', 'Maths', 80, '2025-10-09', 'Oct'),
+      monthlyResult('a', 'Maths', 62, '2026-03-12', 'Mar'),
+      monthlyResult('a', 'Maths', 70, '2026-10-08', 'Oct'),
+    ];
+
+    // Left alone the row covers the newest year; pinned, it covers the year on screen —
+    // which is what the marks screen needs, since there the pills are the control.
+    assert.equal(selectors.monthPillStates(results, 'a').yearKey, '2026-2027');
+    const pinned = selectors.monthPillStates(results, 'a', { yearKey: '2025-2026' });
+    assert.equal(pinned.yearKey, '2025-2026');
+    assert.deepEqual(
+      pinned.months.filter(m => m.hasMarks).map(m => m.label),
+      ['Mar', 'Oct'],
+      'only the months published in the year being viewed',
+    );
+    assert.equal(pinned.months.find(m => m.label === 'Mar').year, 2026);
+    assert.equal(pinned.months.find(m => m.label === 'Oct').year, 2025);
+  });
+
+  it('calculates each child’s pills independently', () => {
+    const results = [
+      monthlyResult('a', 'Maths', 80, '2026-01-15', 'Jan'),
+      monthlyResult('a', 'Science', 55, '2026-02-12', 'Feb'),
+      monthlyResult('b', 'Maths', 55, '2026-03-12', 'Mar'),
+    ];
+
+    const a = selectors.monthPillStates(results, 'a');
+    const b = selectors.monthPillStates(results, 'b');
+    const labels = pills => pills.months.filter(m => m.hasMarks).map(m => m.label);
+
+    assert.deepEqual(labels(a), ['Jan', 'Feb']);
+    assert.deepEqual(labels(b), ['Mar']);
+    assert.equal(a.months.find(m => m.label === 'Jan').count, 1);
+    assert.equal(b.months.find(m => m.label === 'Jan').count, 0,
+      'one child’s January never lights another’s');
+  });
+
+  it('lights a month on the app’s own definition of published', () => {
+    // A subject with continuous assessment but no monthly test has no computed result —
+    // it is still pending — so it contributes nothing to its month.
+    const caOnly = [exam('a', 'Maths', 'Homework', '2025-09-10')];
+    const pending = selectors.computePendingReports(caOnly).filter(p => p.period === 'monthly');
+    assert.equal(pending.length, 1);
+    assert.equal(selectors.computeMonthlyResults(caOnly).length, 0);
+
+    const published = selectors.computeMonthlyResults([
+      ...caOnly,
+      exam('a', 'Maths', 'Quiz', '2025-09-20'),
+    ]);
+    const pills = selectors.monthPillStates(published, 'a');
+    const sep = pills.months.find(m => m.label === 'Sep');
+
+    assert.equal(sep.hasMarks, true);
+    assert.equal(sep.count, 1);
+    assert.equal(sep.academicMonth, 'Sep', 'the month a pill opens');
+  });
+});

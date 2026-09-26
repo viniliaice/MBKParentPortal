@@ -965,3 +965,87 @@ export function summariseChild(
     hasAnyResult: true,
   };
 }
+
+export interface MonthPillState {
+  /** Calendar month index, 0 = Jan — the pills are always drawn Jan → Dec. */
+  index: number;
+  /** Three-letter label, e.g. 'Sep'. */
+  label: string;
+  /** Calendar year this pill falls in, given the academic year the row covers. */
+  year: number | null;
+  /** The academic year the row covers, e.g. '2026-2027'. */
+  yearKey: string;
+  /** The report month the marks screen groups by — the value a pill navigates with. */
+  academicMonth: string;
+  /** Published monthly subject results in this month. */
+  count: number;
+  /** True only when the school has published marks for this student and month. */
+  hasMarks: boolean;
+}
+
+export interface MonthPillStates {
+  /** The academic year the row covers. Empty when there is nothing to place it in. */
+  yearKey: string;
+  months: MonthPillState[];
+}
+
+export interface MonthPillOptions {
+  /** Pin the row to a year the screen is already showing (the marks screen's year). */
+  yearKey?: string;
+  /** Used when the child has no monthly marks yet, so the row still has a year. */
+  fallbackYearKey?: string;
+}
+
+/**
+ * One child's school year as twelve month pills, Jan → Dec: which of them actually carry
+ * published monthly marks.
+ *
+ * "Published" means `computeMonthlyResults` produced a result for it — the same rule the
+ * marks screen uses to offer a month at all — so a month with only half a subject's marks
+ * entered stays empty rather than reading as half full. Which month a result belongs to is
+ * `filterByMonth`'s decision (the school's stored report month, falling back to the date),
+ * never a fresh guess here.
+ *
+ * Left alone, the year is the one `latestPeriodSummary` picks — the year the dashboard's
+ * own "Latest: …" line comes from — so the pills and the month named beside them cannot
+ * disagree. A child with no monthly marks falls back to the school's current year and
+ * lights nothing.
+ */
+export function monthPillStates(
+  results: ReportResult[],
+  studentId: string,
+  options: MonthPillOptions = {},
+): MonthPillStates {
+  const { yearKey: pinnedYear = '', fallbackYearKey = '' } = options;
+  const monthly = filterByPeriod(
+    results.filter(r => r.studentId === studentId),
+    'monthly',
+  );
+
+  const yearKey = pinnedYear || latestPeriodSummary(monthly, 'monthly')?.yearKey || fallbackYearKey;
+  const [startYear, endYear] = yearKey.split('-').map(Number);
+  const inYear = yearKey ? filterByYear(monthly, yearKey) : [];
+
+  return {
+    yearKey,
+    months: MONTH_NAMES.map((label, index) => {
+      // Sep–Dec sit in the academic year's first calendar year, Jan–Aug in its second:
+      // the same split `reportAcademicYearKey` applies when it keys a report period.
+      const year = Number.isInteger(startYear) && Number.isInteger(endYear)
+        ? (index >= 8 ? startYear : endYear)
+        : null;
+      const academicMonth = academicMonthLabel(index);
+      const inMonth = yearKey ? filterByMonth(inYear, academicMonth, yearKey) : [];
+
+      return {
+        index,
+        label,
+        year,
+        yearKey,
+        academicMonth,
+        count: inMonth.length,
+        hasMarks: inMonth.length > 0,
+      };
+    }),
+  };
+}
