@@ -5,7 +5,7 @@ okf_version: "0.1"
 # MBK Parent Portal
 
 * [Auth](/auth.md) - Email-based authentication via Supabase profiles lookup
-* [Notifications](/notifications.md) - Push notification registration and forwarding
+* [Notifications](/notifications.md) - Push notification registration, forwarding, and tap routing
 
 ## Supabase
 
@@ -26,7 +26,12 @@ okf_version: "0.1"
 * [Curriculum](/learning/curriculum.md) - Hardcoded Mathematics and English curriculum
 * [Gamification](/learning/gamification.md) - XP, streaks, levels, and daily rewards
 
+## Academics
+
+* [Marks & reports](/academics/marks.md) - How a parent reaches a child's marks, report periods, and the pending-report rules
+
 ## App
 
-* [Routing](/app/routing.md) - Expo Router file-based route map
+* [Routing](/app/routing.md) - Expo Router file-based route map and the four parent destinations
+* [Theme](/app/theme.md) - Light/dark/system appearance, the palette pair, and the no-hard-coded-colour rule
 * [Platform UI](/app/platform-ui.md) - iOS vs Android vs Web rendering branches
