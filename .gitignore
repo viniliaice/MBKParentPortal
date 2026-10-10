@@ -50,3 +50,6 @@ google-play-service-account.json
 # generated native folders
 /ios
 /android
+
+# Python bytecode from promo-video/scripts/generate_somali_voice.py
+__pycache__/

@@ -1,0 +1,6 @@
+# Sync proofs and scratch media are regenerable, not deliverables:
+#   node ../scripts/build-somali-dub.mjs guide
+out/*-GUIDE-PROOF.mp4
+*-GUIDE-PROOF.m4a
+out/premix-*.wav
+__pycache__/

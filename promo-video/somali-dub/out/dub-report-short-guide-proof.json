@@ -1,0 +1,31 @@
+{
+  "cut": "short",
+  "mode": "guide (sync proof, no voice)",
+  "source": "short-version.mp4",
+  "video": "somali-dub/out/short-version-somali-awdal-GUIDE-PROOF.mp4",
+  "narration": "somali-dub/short-version-somali-awdal-GUIDE-PROOF.m4a",
+  "sourceDurationSeconds": 15.1,
+  "outputDurationSeconds": 15.1,
+  "videoStream": "copied bit-for-bit (-c:v copy)",
+  "audioSpec": "aac, 48 kHz, stereo, 192k",
+  "loudnessTarget": "-16 LUFS / -1.5 dBTP / LRA 11",
+  "loudnessMethod": "EBU R128 two-pass, linear gain (dynamics preserved)",
+  "sourceLoudness": {
+    "integratedLufs": -15.8,
+    "loudnessRangeLu": 1.7,
+    "truePeakDbfs": -3.6
+  },
+  "outputLoudness": {
+    "integratedLufs": -16,
+    "loudnessRangeLu": 3.6,
+    "truePeakDbfs": -2.5
+  },
+  "lines": [
+    {
+      "id": 1,
+      "startsAtSeconds": 0,
+      "sceneBeatEndsAtSeconds": 15.1,
+      "file": "guide tone"
+    }
+  ]
+}

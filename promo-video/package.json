@@ -1,0 +1,31 @@
+{
+  "name": "mbk-parent-portal-promo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Source-faithful Remotion promo-video project for MBK Parent Portal",
+  "scripts": {
+    "studio": "node scripts/run-remotion.mjs studio remotion/index.tsx",
+    "capture-app": "node scripts/capture-app-screens.mjs",
+    "audio:music": "node scripts/generate-music.mjs",
+    "typecheck": "tsc --noEmit",
+    "render:preview": "node scripts/run-remotion.mjs render remotion/index.tsx MBKParentPortalPromo preview.mp4 --codec h264 --crf 23 --scale 0.5 --pixel-format yuv420p --overwrite && node scripts/normalize-audio.mjs preview.mp4",
+    "render:final": "node scripts/run-remotion.mjs render remotion/index.tsx MBKParentPortalPromo final-promo.mp4 --codec h264 --crf 18 --pixel-format yuv420p --audio-codec aac --audio-bitrate 192k --overwrite && node scripts/normalize-audio.mjs final-promo.mp4",
+    "render:short": "node scripts/run-remotion.mjs render remotion/index.tsx MBKParentPortalShort short-version.mp4 --codec h264 --crf 19 --pixel-format yuv420p --audio-codec aac --audio-bitrate 192k --overwrite && node scripts/normalize-audio.mjs short-version.mp4",
+    "render:thumbnail": "node scripts/run-remotion.mjs still remotion/index.tsx MBKParentPortalPromo thumbnail.png --frame 90 --overwrite"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.532",
+    "@remotion/renderer": "^4.0.532",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "remotion": "^4.0.532"
+  },
+  "devDependencies": {
+    "@fontsource/noto-color-emoji": "^5.3.2",
+    "@sparticuz/chromium": "^153.0.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "playwright": "^1.63.0",
+    "typescript": "^5.9.2"
+  }
+}
