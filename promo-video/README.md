@@ -134,10 +134,25 @@ the brief's fallback applies — an original mature Somali male voice in the sam
 artistic spirit.
 
 ```bash
-node scripts/build-somali-dub.mjs guide     # sync proof, no voice needed
-node scripts/build-somali-dub.mjs measure   # timing QC once takes exist
-node scripts/build-somali-dub.mjs all       # build both dubbed cuts
+# 1. Bring in an externally generated Somali narration (wav/mp3/m4a/…)
+node scripts/build-somali-dub.mjs ingest /path/to/narration.mp3 --as full-long
+node scripts/build-somali-dub.mjs ingest /path/to/takes         # or a whole folder
+
+# 2. Check every line still lands inside its scene beat
+node scripts/build-somali-dub.mjs measure
+
+# 3. Export
+node scripts/build-somali-dub.mjs all            # five scene-beat takes
+node scripts/build-somali-dub.mjs full-long      # or one continuous read
+
+node scripts/build-somali-dub.mjs guide          # sync proof, no voice needed
 ```
+
+`ingest` rejects files that are missing, contain no audio stream, are silent
+(peak below -50 dB) or are shorter than 0.5 s, and warns when a take overruns
+its beat or clips. Section 9 of `somali-dub/SCRIPT-somali-awdal.md` lists the
+Somali speech services whose language support was verified, with the accounts
+and environment variables each requires.
 
 ## Quality notes
 

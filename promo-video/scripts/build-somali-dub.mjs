@@ -13,16 +13,22 @@
  * to `somali-dub/out/`.
  *
  * Usage
- *   node scripts/build-somali-dub.mjs long      # 41 s master
- *   node scripts/build-somali-dub.mjs short     # 15 s social cut
- *   node scripts/build-somali-dub.mjs all       # both
+ *   node scripts/build-somali-dub.mjs ingest <file|dir> [--as <target>]
+ *   node scripts/build-somali-dub.mjs measure [long|short|full-long|full-short]
+ *   node scripts/build-somali-dub.mjs long | short | full-long | full-short | all
  *   node scripts/build-somali-dub.mjs guide     # sync proof, no voice needed
- *   node scripts/build-somali-dub.mjs measure   # timing QC report
  *
- * Voice files are expected at `assets/audio/somali/`:
- *   somali-long-01.wav … somali-long-05.wav
- *   somali-short.wav
- * A 44.1/48 kHz mono or stereo WAV is ideal; MP3 and M4A also work.
+ * `ingest` is how an externally generated Somali voiceover enters the
+ * pipeline. It validates the file (exists, really is audio, not silent, long
+ * enough to be speech), converts it to the canonical mix format, and drops it
+ * into `assets/audio/somali/`. Source formats accepted: wav, mp3, m4a, aac,
+ * flac, ogg, opus, webm, mp4.
+ *
+ * Voice files land in `assets/audio/somali/`:
+ *   somali-long-01.wav … somali-long-05.wav   five scene-beat takes
+ *   somali-short.wav                          single 15 s take
+ *   somali-full-long.wav                      one continuous 41 s read
+ *   somali-full-short.wav                     one continuous 15 s read
  *
  * Environment
  *   FFMPEG_PATH   override the ffmpeg location (default: Remotion's bundled
@@ -32,7 +38,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
@@ -72,6 +78,22 @@ const CUTS = {
     narration: 'somali-dub/short-version-somali-awdal.m4a',
     segments: [{ id: 1, from: 0, voice: 'somali-short.wav', next: 15.1 }],
   },
+};
+
+/**
+ * Continuous-narration variants. Some external services return one file for
+ * the whole read rather than five separate takes; these cuts lay that single
+ * file from t=0 across the picture. They write to the SAME output names as
+ * `long` / `short`, because they are an alternative way to produce the same
+ * deliverable, not an extra deliverable.
+ */
+CUTS['full-long'] = {
+  ...CUTS.long,
+  segments: [{ id: 1, from: 0, voice: 'somali-full-long.wav', next: CUTS.long.duration }],
+};
+CUTS['full-short'] = {
+  ...CUTS.short,
+  segments: [{ id: 1, from: 0, voice: 'somali-full-short.wav', next: CUTS.short.duration }],
 };
 
 /** Music levels reproduce the Remotion mix exactly (see remotion/PromoVideo.tsx). */
@@ -237,9 +259,14 @@ async function build(cutName, { guide = false } = {}) {
     const missing = cut.segments.map((s) => s.voice).filter((v) => !exists(path.join(somaliAudioDir, v)));
     if (missing.length) {
       throw new Error(
-        `Missing Somali voice file(s) in assets/audio/somali/: ${missing.join(', ')}\n` +
-          `Run "node scripts/build-somali-dub.mjs guide" for a voice-free sync proof,\n` +
-          `or place the recordings and re-run.`,
+        `Missing Somali voice file(s) in ${path.relative(projectRoot, somaliAudioDir)}/: ${missing.join(', ')}\n\n` +
+          `  To supply an externally generated narration, run:\n` +
+          `    node scripts/build-somali-dub.mjs ingest <file> --as ${cutName === 'long' ? 'long-1' : 'short'}\n` +
+          `  If you have ONE continuous read instead of separate takes, use:\n` +
+          `    node scripts/build-somali-dub.mjs ingest <file> --as full-${cutName}\n` +
+          `    node scripts/build-somali-dub.mjs full-${cutName}\n` +
+          `  For a voice-free sync proof:\n` +
+          `    node scripts/build-somali-dub.mjs guide`,
       );
     }
     for (const segment of cut.segments) {
@@ -359,25 +386,251 @@ async function build(cutName, { guide = false } = {}) {
   return report;
 }
 
+/* ----------------------------------------------------------------- ingest */
+
+/**
+ * Named ingest targets, derived from CUTS so they can never drift out of sync.
+ *   long-1 … long-5   the five scene-beat takes of the 41 s cut
+ *   short             the single 15 s take
+ *   full-long         one continuous read laid across the 41 s cut
+ *   full-short        one continuous read laid across the 15 s cut
+ */
+const INGEST_TARGETS = (() => {
+  const map = {};
+  for (const [cutName, cut] of Object.entries(CUTS)) {
+    cut.segments.forEach((segment) => {
+      const key = cutName === 'long' ? `long-${segment.id}` : cutName;
+      map[key] = {
+        file: segment.voice,
+        cut: cutName,
+        budget: Number((segment.next - segment.from).toFixed(2)),
+        startsAt: segment.from,
+      };
+    });
+  }
+  return map;
+})();
+
+const INGEST_AUDIO_EXTENSIONS = ['.wav', '.mp3', '.m4a', '.aac', '.flac', '.ogg', '.opus', '.webm', '.mp4'];
+
+/** Read duration, stream type and actual signal level from a supplied file. */
+function analyseAudio(file) {
+  const probeText = ffmpeg(['-hide_banner', '-i', file]).text;
+  const hasAudioStream = /Stream #\d+:\d+[^\n]*\bAudio:/.test(probeText);
+  const duration = parseDuration(probeText);
+  const codec = /\bAudio:\s*([a-z0-9_]+)/i.exec(probeText);
+  const volText = ffmpeg([
+    '-hide_banner', '-nostats', '-i', file, '-af', 'volumedetect', '-f', 'null', '-',
+  ]).text;
+  const mean = /mean_volume:\s*(-?[\d.]+)\s*dB/.exec(volText);
+  const max = /max_volume:\s*(-?[\d.]+)\s*dB/.exec(volText);
+  return {
+    hasAudioStream,
+    duration,
+    codec: codec ? codec[1] : null,
+    meanVolumeDb: mean ? Number(mean[1]) : null,
+    maxVolumeDb: max ? Number(max[1]) : null,
+  };
+}
+
+/**
+ * Reject files that are missing, not audio, silent, or too short to be speech.
+ * A file that merely exists is not evidence of a voiceover, so the level floor
+ * matters: a silent or tone-only export would otherwise pass straight through.
+ */
+function validateTake(file, target) {
+  const problems = [];
+  if (!exists(file)) {
+    return { ok: false, problems: ['file does not exist'], info: null };
+  }
+  const info = analyseAudio(file);
+  if (!info.hasAudioStream) problems.push('ffmpeg found no audio stream in this file');
+  if (info.duration == null) problems.push('could not read a duration');
+  else if (info.duration < 0.5) problems.push(`only ${info.duration.toFixed(2)}s long — too short to be speech`);
+  if (info.maxVolumeDb == null) problems.push('could not measure signal level');
+  else if (info.maxVolumeDb < -50) problems.push(`peak ${info.maxVolumeDb} dB — effectively silent`);
+  const warnings = [];
+  if (info.duration != null && target && info.duration > target.budget + 0.25) {
+    warnings.push(
+      `${info.duration.toFixed(2)}s exceeds this line's ${target.budget}s scene beat by ` +
+        `${(info.duration - target.budget).toFixed(2)}s — it will run into the next scene`,
+    );
+  }
+  if (info.maxVolumeDb != null && info.maxVolumeDb > -0.5) {
+    warnings.push(`peak ${info.maxVolumeDb} dB — the take is clipping; re-export with headroom`);
+  }
+  return { ok: problems.length === 0, problems, warnings, info };
+}
+
+/** Convert any supplied take to the format the mixing pipeline expects. */
+function convertTake(src, dest) {
+  run(
+    [
+      '-hide_banner', '-loglevel', 'error', '-y', '-i', src,
+      // Keep the narration intact: high-pass only removes handling rumble, and
+      // silenceremove trims the head so the take starts on the first phoneme.
+      '-af',
+      'highpass=f=70,' +
+        'silenceremove=start_periods=1:start_silence=0.05:start_threshold=-45dB,' +
+        `aresample=${AUDIO_SAMPLE_RATE}:async=1:first_pts=0`,
+      '-ac', '2',
+      '-ar', String(AUDIO_SAMPLE_RATE),
+      '-c:a', 'pcm_s24le',
+      dest,
+    ],
+    `convert ${path.basename(src)}`,
+  );
+}
+
+function relative(p) {
+  const rel = path.relative(projectRoot, p);
+  return rel.startsWith('..') ? p : rel;
+}
+
+/** Ingest one supplied file into one named target. */
+function ingestFile(srcPath, targetName) {
+  const target = INGEST_TARGETS[targetName];
+  if (!target) {
+    throw new Error(
+      `Unknown ingest target "${targetName}". Valid targets:\n  ${Object.keys(INGEST_TARGETS).join(', ')}`,
+    );
+  }
+  const { ok, problems, warnings, info } = validateTake(srcPath, target);
+  const name = path.basename(srcPath);
+  if (!ok) {
+    console.log(`  REJECTED  ${name} -> ${targetName}`);
+    for (const p of problems) console.log(`              ✗ ${p}`);
+    return false;
+  }
+  for (const w of warnings) console.log(`  WARNING   ${name}: ${w}`);
+  const dest = path.join(somaliAudioDir, target.file);
+  mkdirSync(somaliAudioDir, { recursive: true });
+  convertTake(srcPath, dest);
+  const after = analyseAudio(dest);
+  console.log(
+    `  accepted  ${name}\n` +
+      `              in:  ${info.duration.toFixed(2)}s ${info.codec} ` +
+      `mean ${info.meanVolumeDb} dB / peak ${info.maxVolumeDb} dB\n` +
+      `              out: ${relative(dest)}  ${after.duration.toFixed(2)}s ` +
+      `48 kHz stereo wav (budget ${target.budget}s, cue ${target.startsAt}s)`,
+  );
+  return true;
+}
+
+/** Auto-map every audio file in a directory by its filename stem. */
+function ingestDirectory(dirPath) {
+  const wanted = new Map(Object.values(INGEST_TARGETS).map((t) => [path.parse(t.file).name, t]));
+  const entries = readdirSync(dirPath).filter((name) => {
+    const ext = path.extname(name).toLowerCase();
+    return INGEST_AUDIO_EXTENSIONS.includes(ext) || ext === '';
+  });
+  if (!entries.length) {
+    console.log(`  No audio files found in ${dirPath}`);
+    return false;
+  }
+  let accepted = 0;
+  for (const entry of entries.sort()) {
+    const full = path.join(dirPath, entry);
+    if (statSync(full).isDirectory()) continue;
+    const stem = path.parse(entry).name;
+    // Match "somali-long-01", "somali-long-1", "long-01", "01" … against targets.
+    let targetName = null;
+    for (const [key, target] of Object.entries(INGEST_TARGETS)) {
+      const base = path.parse(target.file).name;
+      if (stem === base || stem === key || stem.endsWith(key) || base.endsWith(stem)) {
+        targetName = key;
+        break;
+      }
+    }
+    if (!targetName) {
+      console.log(`  skipped   ${entry} — cannot tell which line this is; use --as <target>`);
+      continue;
+    }
+    if (ingestFile(full, targetName)) accepted += 1;
+  }
+  console.log(`\n  ${accepted} take(s) ingested into ${relative(somaliAudioDir)}`);
+  return accepted > 0;
+}
+
 /* -------------------------------------------------------------------- cli */
 
-const mode = (process.argv[2] || 'long').toLowerCase();
+const USAGE = `Usage:
+  node scripts/build-somali-dub.mjs ingest <file|dir> [--as <target>]
+  node scripts/build-somali-dub.mjs measure [long|short|full-long|full-short]
+  node scripts/build-somali-dub.mjs long | short | full-long | full-short | all
+  node scripts/build-somali-dub.mjs guide
+
+Ingest targets: ${Object.keys(INGEST_TARGETS).join(', ')}
+
+  ingest <file> --as long-1     feed one take into one scene-beat line
+  ingest <file> --as full-long  feed one continuous read across the 41 s cut
+  ingest <dir>                  auto-map every take in a folder by filename`;
+
+function parseArgs(argv) {
+  const positional = [];
+  const flags = {};
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i] === '--as') {
+      flags.as = argv[i + 1];
+      i += 1;
+    } else if (argv[i].startsWith('--')) {
+      flags[argv[i].slice(2)] = true;
+    } else {
+      positional.push(argv[i]);
+    }
+  }
+  return { positional, flags };
+}
+
+const { positional, flags } = parseArgs(process.argv.slice(2));
+const mode = (positional[0] || 'long').toLowerCase();
 
 try {
-  if (mode === 'measure') {
-    const okLong = measure('long');
-    const okShort = measure('short');
-    process.exitCode = okLong && okShort ? 0 : 1;
+  if (mode === 'ingest') {
+    const input = positional[1];
+    if (!input) {
+      console.error(`\n  ingest needs a file or directory path.\n\n${USAGE}\n`);
+      process.exitCode = 2;
+    } else if (!exists(path.resolve(input))) {
+      console.error(`\n  No such file or directory: ${input}\n`);
+      process.exitCode = 1;
+    } else {
+      const resolved = path.resolve(input);
+      const isDir = statSync(resolved).isDirectory();
+      let ok;
+      if (isDir) {
+        ok = ingestDirectory(resolved);
+      } else {
+        const target = flags.as || 'full-long';
+        console.log(`\n  Ingesting ${path.basename(resolved)} as "${target}"`);
+        ok = ingestFile(resolved, target);
+        if (!flags.as) {
+          console.log('  (no --as given; assumed one continuous read. Use --as long-1…long-5 or --as short for scene-beat takes.)');
+        }
+      }
+      if (ok) {
+        console.log('\n  Next:');
+        console.log('    node scripts/build-somali-dub.mjs measure');
+        console.log('    node scripts/build-somali-dub.mjs all\n');
+      }
+      process.exitCode = ok ? 0 : 1;
+    }
+  } else if (mode === 'measure') {
+    const which = positional[1] ? [positional[1]] : ['long', 'short'];
+    const results = which.map((name) => measure(name));
+    process.exitCode = results.every(Boolean) ? 0 : 1;
   } else if (mode === 'guide') {
     await build('long', { guide: true });
     await build('short', { guide: true });
   } else if (mode === 'all') {
     await build('long');
     await build('short');
-  } else if (mode === 'long' || mode === 'short') {
+  } else if (mode in CUTS) {
     await build(mode);
+  } else if (mode === 'help' || mode === '--help' || mode === '-h') {
+    console.log(`\n${USAGE}\n`);
   } else {
-    console.error('Usage: node scripts/build-somali-dub.mjs [long|short|all|guide|measure]');
+    console.error(`\n  Unknown mode "${mode}".\n\n${USAGE}\n`);
     process.exitCode = 2;
   }
 } catch (error) {

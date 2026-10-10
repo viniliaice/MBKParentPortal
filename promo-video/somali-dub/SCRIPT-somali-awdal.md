@@ -284,3 +284,111 @@ so scene alignment, ducking and loudness can be checked first.
 - [ ] Loudness within ±0.5 LU of −16 LUFS, true peak above −2.0 dBFS.
 - [ ] Clean start and clean end, no clipped first or last frame.
 - [ ] Rights position for the voice is documented and satisfied.
+
+---
+
+## 9. External voice generation — handoff
+
+Somali speech cannot be produced inside this repository's build environment;
+it must be generated externally and ingested. Two services were **verified
+against their own documentation** to support Somali. Neither has been run
+successfully here, so **no audio file from either has been heard or approved**.
+
+### Option 1 — Azure AI Speech (recommended)
+
+| | |
+| --- | --- |
+| Voice | **`so-SO-MuuseNeural`** — Somali (Somalia), **male**. `so-SO-UbaxNeural` is the female alternative. |
+| Verified by | Microsoft Azure Speech release notes, October 2021: *"Ubax in so-SO Somali (Somalia), Muuse in so-SO Somali (Somalia)"*, plus the Azure language-support table listing `so-SO`. |
+| Account needed | **Yes.** A free Azure account, then create a **Speech** resource. |
+| Credentials | `SPEECH_KEY` and `SPEECH_REGION` environment variables. Never commit these. |
+| Cost | Free tier **F0 = 500,000 neural TTS characters/month**, no payment details required, does not expire. This script is about **500 characters in total**, so the whole narration sits far inside the free allowance. |
+| Terms | Official, documented, commercial-use permitted under the Azure AI Speech terms. |
+
+```bash
+pip install azure-cognitiveservices-speech
+export SPEECH_KEY=...      # from your Azure Speech resource
+export SPEECH_REGION=...   # e.g. eastus
+
+# One test sentence first — listen to it before generating everything.
+python3 - <<'PY'
+import os, azure.cognitiveservices.speech as sdk
+cfg = sdk.SpeechConfig(subscription=os.environ["SPEECH_KEY"], region=os.environ["SPEECH_REGION"])
+cfg.speech_synthesis_voice_name = "so-SO-MuuseNeural"
+r = sdk.SpeechSynthesizer(speech_config=cfg, audio_config=sdk.audio_config.AudioOutputConfig(filename="test-so.wav"))
+res = r.speak_text_async("Waalid, ilmahaaga maalintiisa dugsiga ha ka maqnaan.").get()
+print("reason:", res.reason)
+PY
+```
+
+If `test-so.wav` sounds acceptable, generate all six takes:
+
+```bash
+cd promo-video
+python3 scripts/generate_somali_voice.py azure
+```
+
+### Option 2 — ElevenLabs
+
+| | |
+| --- | --- |
+| Voice | Model-selected; language code **`som`**. |
+| Verified by | ElevenLabs support article *"What languages do you support?"* — Eleven v3 lists **SOM Somali** among 74 languages. |
+| Account needed | **Yes**, plus `ELEVENLABS_API_KEY`. |
+| Terms | Commercial usage rights begin at the paid **Creator** plan. |
+| Note | The most expressive automated option, but you must pick or design a voice; it is not a dedicated Somali voice. |
+
+```bash
+pip install elevenlabs
+export ELEVENLABS_API_KEY=...
+python3 scripts/generate_somali_voice.py elevenlabs --voice-id <voice_id>
+```
+
+### Not recommended for this deliverable
+
+- **`edge-tts`** (Python, free, no key) drives the same `so-SO-MuuseNeural`
+  voice through Microsoft's Edge Read-Aloud endpoint. It works and is widely
+  used, but that endpoint is **not a documented, licensed public API**. For a
+  promotional video that will be published commercially, use the official
+  Azure SDK above instead.
+- **Meta MMS-TTS `facebook/mms-tts-som`** and **SeamlessM4T-v2** both support
+  Somali and run offline, but are **CC BY-NC 4.0 — non-commercial**. They must
+  not ship in this promo. `generate_somali_voice.py` refuses that route unless
+  `--i-understand-noncommercial` is passed.
+
+### Dialect caveat — read this before publishing
+
+`so-SO` voices are trained on **standard Somali**. Nothing verified here shows
+that any synthetic voice reproduces **Awdal / Borama** regional speech, and no
+such claim is made anywhere in this project. The Awdal character of this dub
+comes from the **script** (section 2), not from the voice. A fluent Awdal
+speaker should audition the result; if the synthetic delivery is not good
+enough, section 6 and `RECORDING-SHEET.md` cover recording a native speaker
+instead.
+
+### Ingesting whatever you generate
+
+```bash
+cd promo-video
+
+# One continuous read of the whole 41 s script:
+node scripts/build-somali-dub.mjs ingest /path/to/narration.mp3 --as full-long
+
+# …or the five scene-beat takes individually:
+node scripts/build-somali-dub.mjs ingest /path/to/take1.mp3 --as long-1
+node scripts/build-somali-dub.mjs ingest /path/to/take2.mp3 --as long-2
+node scripts/build-somali-dub.mjs ingest /path/to/take3.mp3 --as long-3
+node scripts/build-somali-dub.mjs ingest /path/to/take4.mp3 --as long-4
+node scripts/build-somali-dub.mjs ingest /path/to/take5.mp3 --as long-5
+node scripts/build-somali-dub.mjs ingest /path/to/short.mp3  --as short
+
+# …or drop all six in one folder and let it map them by filename:
+node scripts/build-somali-dub.mjs ingest /path/to/takes
+```
+
+`ingest` accepts wav, mp3, m4a, aac, flac, ogg, opus, webm and mp4. It
+**rejects** anything that is missing, has no audio stream, is effectively
+silent (peak below −50 dB), or is shorter than 0.5 s, and it **warns** when a
+take overruns its scene beat or is clipping. Accepted files are converted to
+48 kHz stereo WAV with handling rumble high-passed and leading silence
+trimmed, then written to `assets/audio/somali/`.
