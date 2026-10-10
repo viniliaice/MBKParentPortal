@@ -13,22 +13,28 @@ A Remotion project for a cinematic, vertical promotion of the real MBK Parent Po
 
 The feature claims were checked against `README.md`, `app/(tabs)`, `components/MarksScreen.tsx`, `app/attendance.tsx`, `app/homework.tsx`, `app/(tabs)/messages.tsx`, `app/(tabs)/learning.tsx`, `app/quizzes`, and `data/learningData.ts`.
 
-## Authentic-screen policy
+## Authentic-screen and demo-data policy
 
-All phone UI in the video comes from PNG screenshots captured from the connected Expo Web app. The capture script runs the app source at a 390 × 844 CSS viewport, 2× device scale. The login screen and static learning/lesson screens are real source screens. Parent-data screens are captured in their **actual empty states** because no school Supabase credentials or consented production screenshots were provided. Their lower empty-state area is softly faded in the ad; it is never replaced with made-up marks, grades, names, attendance percentages, homework records, messages, or quiz results.
+Every phone UI image is a PNG captured from the actual Expo Web app at a 390 × 844 CSS viewport and 2× device scale. The app itself renders the layouts; the video does not reconstruct or paint over its UI. The login and learning/lesson screens use the app's real source content.
 
-The capture script uses an ephemeral, local-only auth-cache value to open authenticated routes and intercepts `example.supabase.co` with empty responses. It does not connect to the school's database. No child/parent record or test fixture value appears in the promotional video. `assets/screens/more-empty-dark.png` is retained as a source capture for reference but is not used as a phone shot in the final cut.
+To make the parent-data screens visually useful, `scripts/demo-data.mjs` supplies fictional, internally consistent sample records through Playwright interception of `example.supabase.co` during capture only. It never contacts or writes to the school's database. The sample identity is `Demo Student` (Grade 5A); marks, attendance, homework, messages and notices are illustrative—not real pupil or school records. Scenes that show those records carry an **ILLUSTRATIVE DEMO DATA** disclosure. No real child or parent data is included.
 
-Available captured screens:
+The former `*-empty-dark.png` captures are kept as reference examples of the app's genuine empty states; the master and social cut use the new `*-demo-dark.png` captures.
+
+Captured screens include:
 
 - `assets/screens/login-light.png`
+- `assets/screens/home-demo-dark.png`
+- `assets/screens/marks-demo-dark.png`
+- `assets/screens/attendance-demo-dark.png`
+- `assets/screens/homework-demo-dark.png`
+- `assets/screens/messages-demo-dark.png`
+- `assets/screens/announcements-demo-dark.png`
+- `assets/screens/more-demo-dark.png`
 - `assets/screens/learning-dark.png`
 - `assets/screens/lesson-intro-dark.png`
 - `assets/screens/lesson-question-dark.png`
-- `assets/screens/marks-empty-dark.png`
-- `assets/screens/attendance-empty-dark.png`
-- `assets/screens/homework-empty-dark.png`
-- `assets/screens/messages-empty-dark.png`
+- Original empty-state references: `marks-empty-dark.png`, `attendance-empty-dark.png`, `homework-empty-dark.png`, `messages-empty-dark.png`, and `more-empty-dark.png`.
 
 ## Storyboard and copy
 
@@ -67,7 +73,8 @@ promo-video/
     fonts/                    # Inter + Noto Color Emoji, with OFL license files
     audio/                    # generated narration, original score and transitions
   scripts/
-    capture-app-screens.mjs   # authenticated Expo Web capture, no live data
+    capture-app-screens.mjs   # Expo Web capture with local fixture interception
+    demo-data.mjs             # synthetic, capture-only student/demo records
     generate-music.mjs        # original procedural score and transition tones
     normalize-audio.mjs       # loudness mastering for MP4 renders
     run-remotion.mjs          # local browser setup + Remotion CLI wrapper
@@ -113,4 +120,4 @@ The ambient bed and transition tones are generated from scratch by `scripts/gene
 
 - No release/store badge or “Download Now” claim is shown because the app has not been published according to `docs/play-store-readiness.md`.
 - The ad uses only the repository logo, colors, labels, features and source-rendered screens; no AI-generated image replaces app UI.
-- The source screenshots are intentionally cropped/masked only for composition and privacy/readability; the visible screen pixels themselves are not reconstructed or populated with synthetic record data.
+- The phone pixels are unaltered Expo captures. Synthetic records enter only through capture-time API interception and are disclosed in-video; no fake records are painted into screenshot files.

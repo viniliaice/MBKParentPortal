@@ -61,6 +61,17 @@ function FeatureChip({ label, delay = 0, color = BRAND.cyan }: { label: string; 
   );
 }
 
+function DemoDataDisclosure() {
+  return (
+    <div style={{ position: 'absolute', left: 0, right: 0, bottom: 44, display: 'flex', justifyContent: 'center', zIndex: 20, pointerEvents: 'none' }}>
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '10px 18px', borderRadius: 24, background: 'rgba(7,13,32,0.84)', border: '1px solid rgba(0,188,212,0.48)', boxShadow: '0 10px 26px rgba(0,0,0,0.22)', color: '#E1EDFA', fontSize: 18, lineHeight: 1.1, fontWeight: 700, letterSpacing: 1.15 }}>
+        <span style={{ width: 9, height: 9, borderRadius: 10, background: BRAND.cyan, boxShadow: `0 0 14px ${BRAND.cyan}` }} />
+        ILLUSTRATIVE DEMO DATA
+      </div>
+    </div>
+  );
+}
+
 function HookScene({ short }: { short: boolean }) {
   const frame = useCurrentFrame();
   const phoneWidth = short ? 360 : 444;
@@ -119,7 +130,7 @@ function ProblemScene() {
         <FeatureCard title="School messages" detail="Inbox · Announcements · Sent" icon="message" width={440} compact delay={24} accent={BRAND.green} />
       </div>
       <DeviceZoom fromScale={0.95} toScale={1} fromX={25} delay={3} style={{ position: 'absolute', left: 590, top: 650 }}>
-        <PhoneFrame screenshot="screens/marks-empty-dark.png" width={410} height={Math.round(410 * 844 / 390)} maskStart={0.24} screenScale={1.02} />
+        <PhoneFrame screenshot="screens/home-demo-dark.png" width={410} height={Math.round(410 * 844 / 390)} screenScale={1.02} />
       </DeviceZoom>
       <div style={{ position: 'absolute', right: 75, bottom: 195 }}>
         <FeatureChip label="One parent portal" delay={23} color={BRAND.cyan} />
@@ -145,7 +156,7 @@ function MarksScene({ short }: { short: boolean }) {
         </TextReveal>
       </div>
       <DeviceZoom fromScale={0.94} toScale={1} fromY={40} delay={3} style={{ position: 'absolute', left: (1080 - phoneWidth) / 2, top: short ? 420 : 515 }}>
-        <PhoneFrame screenshot="screens/marks-empty-dark.png" width={phoneWidth} height={phoneHeight} maskStart={0.24} screenScale={zoom} />
+        <PhoneFrame screenshot="screens/marks-demo-dark.png" width={phoneWidth} height={phoneHeight} screenScale={zoom} />
       </DeviceZoom>
       {!short ? (
         <div style={{ position: 'absolute', left: 105, right: 105, bottom: 119, display: 'flex', justifyContent: 'center', gap: 15 }}>
@@ -160,11 +171,10 @@ function MarksScene({ short }: { short: boolean }) {
 
 function AttendanceHomeworkScene({ short }: { short: boolean }) {
   const frame = useCurrentFrame();
-  // This switch is deliberately derived from Remotion time, not mutable UI state.
   const switchAt = short ? 44 : 88;
   const homeworkActive = frame >= switchAt;
-  const frontScreenshot = homeworkActive ? 'screens/homework-empty-dark.png' : 'screens/attendance-empty-dark.png';
-  const secondaryScreenshot = homeworkActive ? 'screens/attendance-empty-dark.png' : 'screens/homework-empty-dark.png';
+  const frontScreenshot = homeworkActive ? 'screens/homework-demo-dark.png' : 'screens/attendance-demo-dark.png';
+  const secondaryScreenshot = homeworkActive ? 'screens/attendance-demo-dark.png' : 'screens/homework-demo-dark.png';
   const frontReveal = interpolate(frame, [switchAt - 8, switchAt, switchAt + 8], [1, 0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
   const secondaryReveal = 1 - frontReveal;
   const phoneWidth = short ? 348 : 395;
@@ -185,11 +195,11 @@ function AttendanceHomeworkScene({ short }: { short: boolean }) {
         ) : null}
       </div>
       <ScreenTransition kind="fade" delay={2} style={{ position: 'absolute', left: 95, top: short ? 345 : 520, opacity: frontReveal }}>
-        <PhoneFrame screenshot={frontScreenshot} width={phoneWidth} height={phoneHeight} maskStart={0.28} />
+        <PhoneFrame screenshot={frontScreenshot} width={phoneWidth} height={phoneHeight} />
       </ScreenTransition>
       {!short ? (
         <ScreenTransition kind="soft-zoom" delay={9} style={{ position: 'absolute', right: 83, top: 667, opacity: secondaryReveal * 0.89 }}>
-          <PhoneFrame screenshot={secondaryScreenshot} width={smallWidth} height={smallHeight} maskStart={0.28} shadow={false} />
+          <PhoneFrame screenshot={secondaryScreenshot} width={smallWidth} height={smallHeight} shadow={false} />
         </ScreenTransition>
       ) : null}
       {short ? (
@@ -224,7 +234,7 @@ function CommunicationsScene({ short }: { short: boolean }) {
         ) : null}
       </div>
       <DeviceZoom fromScale={0.94} toScale={1} fromY={40} delay={4} style={{ position: 'absolute', left: (1080 - phoneWidth) / 2, top: phoneTop }}>
-        <PhoneFrame screenshot="screens/messages-empty-dark.png" width={phoneWidth} height={Math.round(phoneWidth * 844 / 390)} maskStart={0.36} screenScale={1.02} />
+        <PhoneFrame screenshot="screens/messages-demo-dark.png" width={phoneWidth} height={Math.round(phoneWidth * 844 / 390)} screenScale={1.02} />
       </DeviceZoom>
       {!short ? (
         <div style={{ position: 'absolute', left: 130, right: 130, bottom: 115, display: 'flex', justifyContent: 'center' }}>
@@ -302,10 +312,10 @@ function CtaScene({ short }: { short: boolean }) {
 function SceneContent({ id, short }: { id: SceneId; short: boolean }) {
   switch (id) {
     case 'hook': return <HookScene short={short} />;
-    case 'problem': return <ProblemScene />;
-    case 'marks': return <MarksScene short={short} />;
-    case 'attendance-homework': return <AttendanceHomeworkScene short={short} />;
-    case 'communications': return <CommunicationsScene short={short} />;
+    case 'problem': return <><ProblemScene /><DemoDataDisclosure /></>;
+    case 'marks': return <><MarksScene short={short} /><DemoDataDisclosure /></>;
+    case 'attendance-homework': return <><AttendanceHomeworkScene short={short} /><DemoDataDisclosure /></>;
+    case 'communications': return <><CommunicationsScene short={short} /><DemoDataDisclosure /></>;
     case 'learning-ecosystem': return <LearningEcosystemScene short={short} />;
     case 'cta': return <CtaScene short={short} />;
   }

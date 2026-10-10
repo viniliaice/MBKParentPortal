@@ -323,7 +323,7 @@ export function PhoneFrame({
   );
 }
 
-/** The pixels come straight from Expo Web captures; empty record states are softly masked. */
+/** Pixels come straight from Expo Web captures; optional masks add only a soft composition fade. */
 export function AppScreen({
   screenshot,
   maskStart,

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium as playwright } from 'playwright';
 import sparticuzChromium, { inflate, setupLambdaEnvironment } from '@sparticuz/chromium';
+import { buildDemoData } from './demo-data.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
@@ -30,11 +31,43 @@ const context = await browser.newContext({
   colorScheme: 'light',
   reducedMotion: 'reduce',
 });
-await context.route('https://example.supabase.co/**', route => route.fulfill({
-  status: 200,
-  contentType: 'application/json',
-  body: '[]',
-}));
+const demo = buildDemoData();
+await context.route('https://example.supabase.co/**', async route => {
+  const request = route.request();
+  const url = new URL(request.url());
+  const table = url.pathname.split('/').pop();
+  let rows = [];
+
+  if (request.method() === 'GET') {
+    switch (table) {
+      case 'students': rows = demo.students; break;
+      case 'exams': rows = demo.exams; break;
+      case 'attendance': rows = demo.attendance; break;
+      case 'homework': rows = demo.homework; break;
+      case 'academic_years': rows = demo.academicYears; break;
+      case 'announcements': rows = demo.announcements; break;
+      case 'messages':
+        rows = url.searchParams.has('recipientId') ? demo.inboxMessages
+          : url.searchParams.has('senderId') ? demo.sentMessages
+            : [];
+        break;
+      default: rows = [];
+    }
+  }
+
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': request.headers()['access-control-request-headers'] ?? '*',
+    'Content-Type': 'application/json; charset=utf-8',
+  };
+  if (rows.length > 0) headers['Content-Range'] = `0-${rows.length - 1}/${rows.length}`;
+  await route.fulfill({
+    status: 200,
+    headers,
+    body: request.method() === 'OPTIONS' ? '' : JSON.stringify(rows),
+  });
+});
 
 const page = await context.newPage();
 page.on('pageerror', error => console.error('[browser page error]', error.message));
@@ -61,28 +94,30 @@ try {
   await page.screenshot({ path: path.join(output, 'login-light.png'), animations: 'disabled' });
   console.log('Captured login-light.png (actual Expo Web login screen)');
 
-  // Authenticated routes use only source-owned screen layouts and static lesson
-  // content. Record-backed pages remain their real empty states; no child or parent
-  // record is present. This ephemeral local auth cache only passes Expo Router's
-  // gate, while Supabase is pointed at an intercepted example host.
+  // Authenticated routes render through the actual Expo app. The local parent identity
+  // is capture-only; the route interceptor above supplies clearly synthetic demo rows
+  // without connecting to or changing the school's Supabase database.
   await context.addInitScript(() => {
     localStorage.setItem('@mbk_auth_user', JSON.stringify({
       id: 'capture-only-parent',
-      name: '',
-      email: '',
+      name: 'Demo Parent',
+      email: 'demo.parent@example.invalid',
       profileId: 'capture-only-parent',
       role: 'parent',
     }));
     localStorage.setItem('@mbk_theme', 'dark');
   });
 
-  // Authenticated curriculum pages use real, source-defined lesson content only.
+  // Source-authored lesson content is unchanged; record-backed screenshots use the
+  // synthetic capture fixture. Wait on rendered demo values, not merely page titles.
+  await capture('home-demo-dark.png', `${baseUrl}/`, 'Demo Student');
   await capture('learning-dark.png', `${baseUrl}/learning`, 'Learning');
-  await capture('marks-empty-dark.png', `${baseUrl}/marks`, 'Marks');
-  await capture('attendance-empty-dark.png', `${baseUrl}/attendance`, 'Attendance');
-  await capture('homework-empty-dark.png', `${baseUrl}/homework`, 'Homework');
-  await capture('messages-empty-dark.png', `${baseUrl}/messages`, 'Messages');
-  await capture('more-empty-dark.png', `${baseUrl}/more`, 'More');
+  await capture('marks-demo-dark.png', `${baseUrl}/marks`, `${demo.monthShort} average`);
+  await capture('attendance-demo-dark.png', `${baseUrl}/attendance`, '90%');
+  await capture('homework-demo-dark.png', `${baseUrl}/homework`, 'Equivalent fractions');
+  await capture('messages-demo-dark.png', `${baseUrl}/messages`, 'Monthly progress update');
+  await capture('announcements-demo-dark.png', `${baseUrl}/messages?view=announcements`, 'DEMO NOTICE');
+  await capture('more-demo-dark.png', `${baseUrl}/more`, 'Demo Student');
   await capture('lesson-intro-dark.png', `${baseUrl}/lesson/cnt_1?topicId=counting`, 'Count to 5');
 
   // Follow the real lesson flow: Start Lesson opens its source-authored concept
