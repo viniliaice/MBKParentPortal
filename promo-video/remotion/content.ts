@@ -108,3 +108,51 @@ export const SHORT_STORY: StoryScene[] = [
 
 export const LONG_DURATION_SECONDS = LONG_STORY.reduce((sum, scene) => sum + scene.durationSeconds, 0);
 export const SHORT_DURATION_SECONDS = SHORT_STORY.reduce((sum, scene) => sum + scene.durationSeconds, 0);
+
+/* ------------------------------------------------------------------------- *
+ * Somali (Awdal / Borama) narration — approved script.
+ *
+ * This copy is the recorded source of truth for the Somali dub. It is not yet
+ * wired into LONG_VOICE_SEGMENTS / SHORT_SCRIPT above because no licensed
+ * Somali voice recording exists in the repository; repointing the audio now
+ * would break the Remotion render. The dub is produced from these lines by
+ * `scripts/build-somali-dub.mjs`, which replaces the audio track of the
+ * rendered masters with `-c:v copy` (picture untouched).
+ *
+ * Full timing, performance direction, dialect rationale and the recording
+ * specification live in `somali-dub/SCRIPT-somali-awdal.md`.
+ *
+ * Voice rights: Xasan Aadan Samatar's voice is NOT cloned or imitated. No
+ * authorized recording or permission instrument is present in this
+ * repository, so the brief's fallback applies — an original mature Somali
+ * male voice in the same artistic spirit.
+ * ------------------------------------------------------------------------- */
+
+/** Awdal Somali, five lines cued to the same beats as LONG_VOICE_SEGMENTS. */
+export const LONG_SCRIPT_SO = [
+  // cue 0 s — hook + "The school day moves fast."
+  'Waalid, ilmahaaga maalintiisa dugsiga ha ka maqnaan. MBK Parent Portal ayaa wararka dugsiga meel keliya kuu keenaya.',
+  // cue 12 s — marks/reports, attendance, homework
+  'La soco dhibcaha iyo warbixinnada, xaqiiji xaadirinta, shaqada gurigana indhaha ku hay.',
+  // cue 21 s — school messages and announcements
+  'Fariimaha iyo ogeysiisyada dugsiga hal meel ka akhri.',
+  // cue 28 s — lessons, practice and class quizzes
+  'Ardaydana casharrada, layliyada iyo imtixaannada fasalka ayaa waxbarashada sii wadaya.',
+  // cue 35 s — call to action
+  'MBK Parent Portal — ku gal iimaylka uu dugsigu kuu diiwaangeliyay.',
+] as const;
+
+/** Awdal Somali, single take for the 15 s social cut. */
+export const SHORT_SCRIPT_SO =
+  'Ilmahaaga maalintiisa dugsiga ha ka maqnaan. Dhibcaha, xaadirinta, shaqada guriga iyo fariimaha hal meel ka arag. Casharrada iyo imtixaannada fasalkana raac. MBK Parent Portal — ku gal iimaylka laguu diiwaangeliyay.';
+
+/** Where the Somali takes are expected once recorded. */
+export const SOMALI_VOICE_DIR = 'assets/audio/somali';
+export const LONG_VOICE_SEGMENTS_SO = LONG_SCRIPT_SO.map((line, index) => ({
+  file: `somali-long-0${index + 1}.wav`,
+  fromSeconds: LONG_VOICE_SEGMENTS[index].fromSeconds,
+  /** Must finish before this, or the line collides with the next scene beat. */
+  endsBeforeSeconds:
+    index + 1 < LONG_VOICE_SEGMENTS.length ? LONG_VOICE_SEGMENTS[index + 1].fromSeconds : LONG_DURATION_SECONDS,
+  text: line,
+}));

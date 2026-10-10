@@ -1,0 +1,55 @@
+{
+  "cut": "long",
+  "mode": "guide (sync proof, no voice)",
+  "source": "final-promo.mp4",
+  "video": "somali-dub/out/final-promo-somali-awdal-GUIDE-PROOF.mp4",
+  "narration": "somali-dub/final-promo-somali-awdal-GUIDE-PROOF.m4a",
+  "sourceDurationSeconds": 41.1,
+  "outputDurationSeconds": 41.1,
+  "videoStream": "copied bit-for-bit (-c:v copy)",
+  "audioSpec": "aac, 48 kHz, stereo, 192k",
+  "loudnessTarget": "-16 LUFS / -1.5 dBTP / LRA 11",
+  "loudnessMethod": "EBU R128 two-pass, linear gain (dynamics preserved)",
+  "sourceLoudness": {
+    "integratedLufs": -16.2,
+    "loudnessRangeLu": 19.7,
+    "truePeakDbfs": -2.7
+  },
+  "outputLoudness": {
+    "integratedLufs": -15.9,
+    "loudnessRangeLu": 10.4,
+    "truePeakDbfs": -3.1
+  },
+  "lines": [
+    {
+      "id": 1,
+      "startsAtSeconds": 0,
+      "sceneBeatEndsAtSeconds": 12,
+      "file": "guide tone"
+    },
+    {
+      "id": 2,
+      "startsAtSeconds": 12,
+      "sceneBeatEndsAtSeconds": 21,
+      "file": "guide tone"
+    },
+    {
+      "id": 3,
+      "startsAtSeconds": 21,
+      "sceneBeatEndsAtSeconds": 28,
+      "file": "guide tone"
+    },
+    {
+      "id": 4,
+      "startsAtSeconds": 28,
+      "sceneBeatEndsAtSeconds": 35,
+      "file": "guide tone"
+    },
+    {
+      "id": 5,
+      "startsAtSeconds": 35,
+      "sceneBeatEndsAtSeconds": 41.1,
+      "file": "guide tone"
+    }
+  ]
+}

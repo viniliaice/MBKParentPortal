@@ -109,6 +109,36 @@ promo-video/
 
 The ambient bed and transition tones are generated from scratch by `scripts/generate-music.mjs`; no stock music or third-party audio track is used. The narration is generated speech. Each MP4 render is loudness-mastered by `scripts/normalize-audio.mjs` to a -16 LUFS / -1.5 dBTP target. Inter and Noto Color Emoji font files are distributed under their respective SIL Open Font License notices in `assets/fonts/`. Noto Color Emoji is used only as a browser fallback when capturing the app's authored lesson emoji on Linux.
 
+## Somali (Awdal) dub — in progress, blocked on voice sourcing
+
+A Somali-language audio replacement for both cuts is scoped, scripted and
+engineered, but **no Somali narration exists yet**, so no dubbed video has been
+produced.
+
+| File | Role |
+| --- | --- |
+| `somali-dub/SCRIPT-somali-awdal.md` | The approved Awdal/Borama Somali script: five lines cued to the long cut's scene beats, one take for the social cut, plus performance direction, dialect rationale, recording spec and voice-rights position |
+| `somali-dub/INVESTIGATION-somali-tts.md` | Verified survey of every Somali-capable speech engine, what is ruled out and why, the exact network restriction, and the licensing finding that disqualifies MMS-TTS for commercial use |
+| `scripts/generate_somali_voice.py` | Multi-route Somali narration generator (edge-tts / Azure / ElevenLabs / MMS / existing recordings) with a TLS-level preflight that fails loudly instead of producing non-Somali audio |
+| `scripts/build-somali-dub.mjs` | Replaces the audio track of the rendered masters. Video is copied bit-for-bit (`-c:v copy`); verified by identical video-stream MD5 |
+| `remotion/content.ts` | `LONG_SCRIPT_SO` / `SHORT_SCRIPT_SO` hold the approved Somali copy as source of truth |
+| `somali-dub/out/*-GUIDE-PROOF.mp4` | Sync proofs: real picture and music, with a tone blip on each cue. **Not deliverables — they contain no speech** |
+
+The existing English narration, the procedural music bed and the transition
+tones are untouched. `final-promo.mp4` and `short-version.mp4` remain the
+masters; dub outputs are written only to `somali-dub/`.
+
+Voice rights: Xasan Aadan Samatar's voice is **not** cloned or imitated. No
+authorized recording or permission instrument is present in this repository, so
+the brief's fallback applies — an original mature Somali male voice in the same
+artistic spirit.
+
+```bash
+node scripts/build-somali-dub.mjs guide     # sync proof, no voice needed
+node scripts/build-somali-dub.mjs measure   # timing QC once takes exist
+node scripts/build-somali-dub.mjs all       # build both dubbed cuts
+```
+
 ## Quality notes
 
 - No release/store badge or “Download Now” claim is shown because the app has not been published according to `docs/play-store-readiness.md`.
