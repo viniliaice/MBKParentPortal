@@ -1,0 +1,222 @@
+# Builds an unsigned iOS .ipa so the app can be run on a real iPhone without a
+# paid Apple Developer account.
+#
+# Apple will not install this as-is — the signature is removed on purpose. It is
+# meant to be re-signed on the tester's own machine with a free Apple ID by a
+# sideloading tool (Sideloadly, AltStore), which is what makes it usable for a
+# demo. Two consequences of that route, both visible in the build steps below:
+#
+#   * the aps-environment (push) entitlement is stripped, because a free Apple ID
+#     cannot be provisioned for Push Notifications and a sideloading tool will
+#     refuse an app that asks for it. Push does not work on this IPA.
+#   * the bundle identifier is com.MBKConnect; a sideloading tool gives the app a
+#     team-specific identifier of its own when it re-signs.
+#
+# It is also the first compile of this project's iOS side, so it doubles as the
+# check that the native project is coherent.
+name: iOS unsigned IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'app/**'
+      - 'components/**'
+      - 'constants/**'
+      - 'context/**'
+      - 'data/**'
+      - 'hooks/**'
+      - 'lib/**'
+      - 'utils/**'
+      - 'assets/**'
+      - 'app.json'
+      - 'babel.config.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ios-ipa.yml'
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'components/**'
+      - 'constants/**'
+      - 'context/**'
+      - 'data/**'
+      - 'hooks/**'
+      - 'lib/**'
+      - 'utils/**'
+      - 'assets/**'
+      - 'app.json'
+      - 'babel.config.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ios-ipa.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EXPO_NO_TELEMETRY: '1'
+  CI: '1'
+  SCHEME: MBKParentPortal
+  APP_NAME: MBKParentPortal
+
+jobs:
+  ipa:
+    # Expo SDK 54 needs Xcode 16.1 or newer.
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          pod --version || sudo gem install cocoapods --no-document
+          node --version
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      # Inlined into the JS bundle at build time, exactly as in the Android job.
+      - name: Write .env
+        env:
+          SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL || 'https://qopeilyvkfqbjdeudwnz.supabase.co' }}
+          SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::warning title=No Supabase key::EXPO_PUBLIC_SUPABASE_ANON_KEY is not set. The app will build and install, but every sign-in attempt will fail."
+            SUPABASE_ANON_KEY='missing-anon-key-placeholder'
+          fi
+          {
+            echo "EXPO_PUBLIC_SUPABASE_URL=$SUPABASE_URL"
+            echo "EXPO_PUBLIC_SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY"
+          } > .env
+          echo "Wrote .env for $SUPABASE_URL"
+
+      - name: Prebuild native project
+        run: npx expo prebuild --platform ios --no-install
+
+      # expo-notifications asks for aps-environment, which a free Apple ID cannot
+      # be provisioned for. Dropping it here is what lets the demo be sideloaded.
+      - name: Drop the push entitlement
+        run: |
+          ENTITLEMENTS="ios/${APP_NAME}/${APP_NAME}.entitlements"
+          if [ -f "$ENTITLEMENTS" ]; then
+            /usr/libexec/PlistBuddy -c "Delete :aps-environment" "$ENTITLEMENTS" || true
+            cat "$ENTITLEMENTS"
+          fi
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/CocoaPods
+            ios/Pods
+          key: pods-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: pods-${{ runner.os }}-
+
+      - name: Install pods
+        working-directory: ios
+        run: |
+          set -o pipefail
+          pod install 2>&1 | tee /tmp/pod.log
+
+      - name: Build (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace "ios/${SCHEME}.xcworkspace" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath ios/build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" \
+            build 2>&1 | tee /tmp/xcodebuild.log
+
+      # Pods and Xcode failures are equally buried; republish the reason.
+      - name: Report the failure
+        if: failure()
+        run: |
+          set +e
+          {
+            echo "### iOS build failure"
+            echo
+            if [ -f /tmp/pod.log ]; then
+              echo "**pod install**"
+              echo '```'
+              tail -n 30 /tmp/pod.log
+              echo '```'
+            fi
+            if [ -s /tmp/xcodebuild.log ]; then
+              echo "**xcodebuild**"
+              echo '```'
+              grep -E "error:|The following build commands failed|\*\* BUILD FAILED \*\*|Undefined symbols|not found" -A 3 /tmp/xcodebuild.log | tail -n 60
+              echo '```'
+            fi
+            echo "**products**"
+            echo '```'
+            ls -R "ios/build/Build/Products" 2>/dev/null | head -n 40
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error title=iOS build failed::$(grep -m1 -E 'error:|BUILD FAILED' /tmp/xcodebuild.log 2>/dev/null | tr '\n' ' ' | cut -c1-800)"
+
+      - name: Package the .ipa
+        run: |
+          set -euo pipefail
+          APP="ios/build/Build/Products/Release-iphoneos/${APP_NAME}.app"
+          test -d "$APP"
+
+          # The JS bundle is the app; without it the IPA is an empty shell.
+          test -f "$APP/main.jsbundle"
+          grep -aq "${{ vars.EXPO_PUBLIC_SUPABASE_URL || 'https://qopeilyvkfqbjdeudwnz.supabase.co' }}" "$APP/main.jsbundle"
+
+          # No signature, and nothing asking for entitlements we cannot get.
+          codesign -dvvv "$APP" 2>&1 || echo "not signed (expected)"
+          codesign -d --entitlements :- "$APP" 2>&1 | head -n 5 || true
+
+          # What the sideloading tool will read out of the file.
+          IDENTITY="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist") $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist") min-iOS $(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist" 2>/dev/null || echo 15.1)"
+          echo "identity: $IDENTITY"
+          du -sh "$APP"
+
+          rm -rf Payload "${APP_NAME}-unsigned.ipa"
+          mkdir Payload
+          cp -R "$APP" Payload/
+          zip -qry "${APP_NAME}-unsigned.ipa" Payload
+          rm -rf Payload
+
+          # The zip must contain the app, with a bundle and an Info.plist in it.
+          unzip -l "${APP_NAME}-unsigned.ipa" | grep -q "Payload/${APP_NAME}.app/Info.plist"
+          unzip -l "${APP_NAME}-unsigned.ipa" | grep -q "Payload/${APP_NAME}.app/main.jsbundle"
+
+          {
+            echo "### iPhone IPA (unsigned)"
+            echo
+            echo "- file: \`${APP_NAME}-unsigned.ipa\`"
+            echo "- size: $(du -h "${APP_NAME}-unsigned.ipa" | cut -f1)"
+            echo "- sha256: \`$(shasum -a 256 "${APP_NAME}-unsigned.ipa" | cut -d' ' -f1)\`"
+            echo "- identity: $IDENTITY"
+            echo "- signed: no — re-sign with Sideloadly and a free Apple ID to install"
+            echo "- push notifications: removed (a free Apple ID cannot provision them)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=IPA ready::identity=$IDENTITY size=$(du -h "${APP_NAME}-unsigned.ipa" | cut -f1) sha256=$(shasum -a 256 "${APP_NAME}-unsigned.ipa" | cut -c1-16)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mbk-parent-portal-unsigned-ipa
+          path: MBKParentPortal-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
