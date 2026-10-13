@@ -1,0 +1,201 @@
+# Builds an installable Android APK without EAS.
+#
+# No Expo/EAS account is involved: `expo prebuild` generates the native project
+# on the runner and Gradle builds it. The generated `release` build type signs
+# with the template's debug keystore (see `signingConfigs` in
+# android/app/build.gradle), which is what makes the APK installable on a phone.
+# That also means this artifact is for testing, not for Play.
+#
+# Build inputs that are deliberately not in the repository:
+#   EXPO_PUBLIC_SUPABASE_ANON_KEY  secret   — without it lib/supabase.ts throws
+#                                             at import and the app never starts.
+#   EXPO_PUBLIC_SUPABASE_URL       var      — defaults to the project in supabase/config.toml.
+#   GOOGLE_SERVICES_JSON           secret   — optional; a stub is written when absent, which
+#                                             builds fine but cannot register push tokens.
+name: Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'app/**'
+      - 'components/**'
+      - 'constants/**'
+      - 'context/**'
+      - 'data/**'
+      - 'hooks/**'
+      - 'lib/**'
+      - 'utils/**'
+      - 'assets/**'
+      - 'app.json'
+      - 'babel.config.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/android-apk.yml'
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'components/**'
+      - 'constants/**'
+      - 'context/**'
+      - 'data/**'
+      - 'hooks/**'
+      - 'lib/**'
+      - 'utils/**'
+      - 'assets/**'
+      - 'app.json'
+      - 'babel.config.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/android-apk.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EXPO_NO_TELEMETRY: '1'
+  CI: '1'
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      # Expo reads .env at bundle time and inlines EXPO_PUBLIC_* into the JS.
+      - name: Write .env
+        env:
+          SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL || 'https://qopeilyvkfqbjdeudwnz.supabase.co' }}
+          SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::warning title=No Supabase key::EXPO_PUBLIC_SUPABASE_ANON_KEY is not set. The app will build, install and open, but every sign-in attempt will fail."
+            SUPABASE_ANON_KEY='missing-anon-key-placeholder'
+          fi
+          {
+            echo "EXPO_PUBLIC_SUPABASE_URL=$SUPABASE_URL"
+            echo "EXPO_PUBLIC_SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY"
+          } > .env
+          echo "Wrote .env for $SUPABASE_URL"
+
+      # app.json points at ./google-services.json, and prebuild fails without it.
+      - name: Write google-services.json
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            case "$GOOGLE_SERVICES_JSON" in
+              \{*) printf '%s' "$GOOGLE_SERVICES_JSON" > google-services.json ;;
+              *) printf '%s' "$GOOGLE_SERVICES_JSON" | base64 -d > google-services.json ;;
+            esac
+            echo "Using the GOOGLE_SERVICES_JSON secret."
+          else
+            echo "::warning title=Push notifications disabled::No GOOGLE_SERVICES_JSON secret, so a stub is written. The APK builds and runs, but Firebase push registration cannot succeed."
+            cat > google-services.json <<'JSON'
+          {
+            "project_info": {
+              "project_number": "000000000000",
+              "project_id": "mbk-parent-portal-stub",
+              "storage_bucket": "mbk-parent-portal-stub.appspot.com"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+                  "android_client_info": { "package_name": "com.MBKConnect" }
+                },
+                "oauth_client": [],
+                "api_key": [{ "current_key": "AIzaSyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }],
+                "services": { "appinvite_service": { "other_platform_oauth_client": [] } }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          JSON
+          fi
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Prebuild native project
+        run: npx expo prebuild --platform android --no-install
+
+      # Gradle can fetch the NDK itself, but doing it first keeps the log clear.
+      - name: Install NDK and CMake
+        run: |
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          NDK_VERSION="$(grep -oP '^\s*ndkVersion\s*=\s*"\K[^"]+' node_modules/react-native/gradle/libs.versions.toml | head -1)"
+          echo "react-native expects NDK ${NDK_VERSION:-<not declared>}"
+          if [ -n "$NDK_VERSION" ] && [ ! -d "$SDK_ROOT/ndk/$NDK_VERSION" ]; then
+            yes | sdkmanager --install "ndk;$NDK_VERSION" "cmake;3.22.1" > /dev/null
+          fi
+          sdkmanager --list_installed | grep -E 'ndk|cmake' || true
+
+      # arm64-v8a covers every phone made in the last decade; dropping the x86
+      # ABIs keeps the download to something a phone can pull over mobile data.
+      - name: Build release APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
+
+      - name: Verify the APK
+        env:
+          SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL || 'https://qopeilyvkfqbjdeudwnz.supabase.co' }}
+        run: |
+          set -euo pipefail
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          test -f "$APK"
+
+          # An APK with no embedded bundle has nothing to run.
+          unzip -l "$APK" | grep -q 'assets/index.android.bundle'
+
+          # The bundle must carry the URL it was built with.
+          unzip -p "$APK" assets/index.android.bundle | grep -aq "$SUPABASE_URL"
+
+          # An unsigned APK will not install; this one is signed with the debug key.
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          APKSIGNER="$(ls "$SDK_ROOT"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)"
+          "$APKSIGNER" verify --print-certs "$APK"
+
+          {
+            echo "### Android APK"
+            echo
+            echo "- file: \`app-release.apk\`"
+            echo "- size: $(du -h "$APK" | cut -f1)"
+            echo "- sha256: \`$(sha256sum "$APK" | cut -d' ' -f1)\`"
+            echo "- abis: arm64-v8a, armeabi-v7a"
+            echo "- signed: yes (debug keystore — installable, not Play-ready)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mbk-parent-portal-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
