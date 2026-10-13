@@ -185,6 +185,12 @@ jobs:
 
           # No signature, and nothing asking for entitlements we cannot get.
           codesign -dvvv "$APP" 2>&1 || echo "not signed (expected)"
+          codesign -d --entitlements :- "$APP" 2>&1 | head -n 5 || true
+
+          # What the sideloading tool will read out of the file.
+          IDENTITY="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist") $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist") min-iOS $(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist" 2>/dev/null || echo 15.1)"
+          echo "identity: $IDENTITY"
+          du -sh "$APP"
 
           rm -rf Payload "${APP_NAME}-unsigned.ipa"
           mkdir Payload
@@ -192,16 +198,21 @@ jobs:
           zip -qry "${APP_NAME}-unsigned.ipa" Payload
           rm -rf Payload
 
+          # The zip must contain the app, with a bundle and an Info.plist in it.
+          unzip -l "${APP_NAME}-unsigned.ipa" | grep -q "Payload/${APP_NAME}.app/Info.plist"
+          unzip -l "${APP_NAME}-unsigned.ipa" | grep -q "Payload/${APP_NAME}.app/main.jsbundle"
+
           {
             echo "### iPhone IPA (unsigned)"
             echo
             echo "- file: \`${APP_NAME}-unsigned.ipa\`"
             echo "- size: $(du -h "${APP_NAME}-unsigned.ipa" | cut -f1)"
             echo "- sha256: \`$(shasum -a 256 "${APP_NAME}-unsigned.ipa" | cut -d' ' -f1)\`"
-            echo "- bundle id: com.MBKConnect"
+            echo "- identity: $IDENTITY"
             echo "- signed: no — re-sign with Sideloadly and a free Apple ID to install"
             echo "- push notifications: removed (a free Apple ID cannot provision them)"
           } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=IPA ready::identity=$IDENTITY size=$(du -h "${APP_NAME}-unsigned.ipa" | cut -f1) sha256=$(shasum -a 256 "${APP_NAME}-unsigned.ipa" | cut -c1-16)"
 
       - uses: actions/upload-artifact@v4
         with:

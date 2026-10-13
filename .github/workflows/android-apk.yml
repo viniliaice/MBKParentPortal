@@ -237,6 +237,13 @@ jobs:
           APKSIGNER="$(ls "$SDK_ROOT"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)"
           "$APKSIGNER" verify --print-certs "$APK"
 
+          # What the phone will actually install: identity and launcher. A dev
+          # build would launch into the dev-launcher activity instead of the app.
+          AAPT="$(ls "$SDK_ROOT"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -1)"
+          "$AAPT" dump badging "$APK" | grep -E "^package:|^launchable-activity:|^sdkVersion:|^targetSdkVersion:" | tee /tmp/badging.txt
+          grep -q 'MainActivity' /tmp/badging.txt
+          echo "native libs: $(unzip -l "$APK" | grep -c 'lib/arm')"
+
           {
             echo "### Android APK"
             echo
@@ -245,7 +252,12 @@ jobs:
             echo "- sha256: \`$(sha256sum "$APK" | cut -d' ' -f1)\`"
             echo "- abis: arm64-v8a, armeabi-v7a"
             echo "- signed: yes (debug keystore — installable, not Play-ready)"
+            echo
+            echo '```'
+            cat /tmp/badging.txt
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=APK ready::$(tr '\n' ' ' < /tmp/badging.txt) size=$(du -h "$APK" | cut -f1) sha256=$(sha256sum "$APK" | cut -c1-16)"
 
       - uses: actions/upload-artifact@v4
         with:
