@@ -127,7 +127,9 @@ jobs:
 
       - name: Install pods
         working-directory: ios
-        run: pod install
+        run: |
+          set -o pipefail
+          pod install 2>&1 | tee /tmp/pod.log
 
       - name: Build (unsigned)
         run: |
@@ -142,7 +144,34 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGN_ENTITLEMENTS="" \
-            build
+            build 2>&1 | tee /tmp/xcodebuild.log
+
+      # Pods and Xcode failures are equally buried; republish the reason.
+      - name: Report the failure
+        if: failure()
+        run: |
+          set +e
+          {
+            echo "### iOS build failure"
+            echo
+            if [ -f /tmp/pod.log ]; then
+              echo "**pod install**"
+              echo '```'
+              tail -n 30 /tmp/pod.log
+              echo '```'
+            fi
+            if [ -s /tmp/xcodebuild.log ]; then
+              echo "**xcodebuild**"
+              echo '```'
+              grep -E "error:|The following build commands failed|\*\* BUILD FAILED \*\*|Undefined symbols|not found" -A 3 /tmp/xcodebuild.log | tail -n 60
+              echo '```'
+            fi
+            echo "**products**"
+            echo '```'
+            ls -R "ios/build/Build/Products" 2>/dev/null | head -n 40
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error title=iOS build failed::$(grep -m1 -E 'error:|BUILD FAILED' /tmp/xcodebuild.log 2>/dev/null | tr '\n' ' ' | cut -c1-800)"
 
       - name: Package the .ipa
         run: |

@@ -63,7 +63,8 @@ env:
 
 jobs:
   apk:
-    runs-on: ubuntu-latest
+    # Pinned on purpose: the ubuntu-latest label moves to Ubuntu 26 in October 2026.
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -78,7 +79,21 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - uses: android-actions/setup-android@v3
+      # The runner image ships the SDK, NDK and cmdline-tools already; this only
+      # puts sdkmanager on PATH and accepts the licences, which AGP needs before
+      # it will download the NDK the React Native version asks for.
+      - name: Android SDK
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          CMDLINE="$(ls -d "$SDK_ROOT"/cmdline-tools/*/bin 2>/dev/null | sort -V | tail -1)"
+          echo "sdk-root=$SDK_ROOT"
+          echo "cmdline-tools=${CMDLINE:-<none found>}"
+          ls "$SDK_ROOT" 
+          if [ -n "$CMDLINE" ]; then
+            echo "$CMDLINE" >> "$GITHUB_PATH"
+            yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          fi
 
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
@@ -150,6 +165,7 @@ jobs:
       # Gradle can fetch the NDK itself, but doing it first keeps the log clear.
       - name: Install NDK and CMake
         run: |
+          set -euo pipefail
           SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
           NDK_VERSION="$(grep -oP '^\s*ndkVersion\s*=\s*"\K[^"]+' node_modules/react-native/gradle/libs.versions.toml | head -1)"
           echo "react-native expects NDK ${NDK_VERSION:-<not declared>}"
@@ -162,7 +178,25 @@ jobs:
       # ABIs keeps the download to something a phone can pull over mobile data.
       - name: Build release APK
         working-directory: android
-        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
+        run: |
+          set -o pipefail
+          ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a 2>&1 | tee /tmp/gradle.log
+
+      # A single Gradle failure hides in thousands of lines of build output, and
+      # the raw step log is not always easy to reach — so it is republished.
+      - name: Report the Gradle failure
+        if: failure()
+        run: |
+          set +e
+          [ -f /tmp/gradle.log ] || exit 0
+          {
+            echo "### Gradle failure"
+            echo
+            echo '```'
+            grep -E "What went wrong|^FAILURE:|^\* Where|^\* Try:|Caused by:|Execution failed" -A 4 /tmp/gradle.log | tail -n 60
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error title=Gradle failed::$(grep -m1 -A 4 'What went wrong' /tmp/gradle.log | tr '\n' ' ' | cut -c1-800)"
 
       - name: Verify the APK
         env:
