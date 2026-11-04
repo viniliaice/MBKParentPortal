@@ -103,10 +103,15 @@ describe('report selectors', { skip }, () => {
     assert.deepEqual(summary.attention, []);
   });
 
-  it('rolls the academic year over in September', () => {
+  it('rolls the academic year over in August, when the school year starts', () => {
+    // The school's academic_years run 1 Aug → 31 May (2026/2027 = 2026-08-01 →
+    // 2027-05-31): August is the first report month of the new year, not the last
+    // month of the old one.
     assert.equal(selectors.academicYearKey('2025-09-15T00:00:00.000Z'), '2025-2026');
     assert.equal(selectors.academicYearKey('2026-06-10T00:00:00.000Z'), '2025-2026');
-    assert.equal(selectors.academicYearKey('2026-08-20T00:00:00.000Z'), '2025-2026');
+    assert.equal(selectors.academicYearKey('2026-07-31T00:00:00.000Z'), '2025-2026');
+    assert.equal(selectors.academicYearKey('2026-08-01T00:00:00.000Z'), '2026-2027');
+    assert.equal(selectors.academicYearKey('2026-08-20T00:00:00.000Z'), '2026-2027');
     assert.equal(selectors.academicYearKey('2026-09-15T00:00:00.000Z'), '2026-2027');
     assert.equal(selectors.academicYearKey('not a date'), '');
   });
@@ -118,7 +123,7 @@ describe('report selectors', { skip }, () => {
     assert.equal(selectors.academicMonthLabel(5), 'Jun');
     assert.equal(selectors.academicMonthLabel(6), 'Jul');
     assert.equal(selectors.academicMonthLabel(7), 'Aug');
-    assert.deepEqual(selectors.ACADEMIC_YEAR_MONTHS, ['Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug']);
+    assert.deepEqual(selectors.ACADEMIC_YEAR_MONTHS, ['Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul']);
   });
 
   it('keeps the same month of two different years apart', () => {
@@ -264,6 +269,29 @@ describe('report selectors', { skip }, () => {
     assert.equal(childD.pending.length, 3, 'the full list is still available');
   });
 
+  it('keeps last-year marks out of a current-year Home summary', () => {
+    const lastYear = monthlyResult('a', 'English', 61, '2026-04-12', 'Apr');
+    const currentYear = monthlyResult('a', 'English', 82, '2026-10-12', 'Oct');
+    const pending = [
+      { id: 'old-pending', studentId: 'a', subject: 'Maths', period: 'monthly', month: 'Apr',
+        date: '2026-04-12', missing: ['quiz'] },
+      { id: 'current-pending', studentId: 'a', subject: 'Science', period: 'monthly', month: 'Oct',
+        date: '2026-10-12', missing: ['quiz'] },
+    ];
+
+    const noCurrentMarks = selectors.filterByYear([lastYear], '2026-2027');
+    const emptyHome = selectors.summariseChild(noCurrentMarks, [], 'a');
+    assert.equal(emptyHome.hasAnyResult, false, 'a child with only 2025-2026 marks has no current-year Home result');
+    assert.equal(selectors.latestPeriodSummary(noCurrentMarks, 'monthly'), null);
+
+    const currentYearResults = selectors.filterByYear([lastYear, currentYear], '2026-2027');
+    const currentYearPending = selectors.pendingForView(pending, 'monthly', { yearKey: '2026-2027' });
+    const currentHome = selectors.summariseChild(currentYearResults, currentYearPending, 'a');
+    assert.equal(currentHome.averagePct, 82);
+    assert.equal(currentHome.label, 'Oct 2026 monthly report');
+    assert.deepEqual(currentHome.pending.map(item => item.id), ['current-pending']);
+  });
+
   describe('report-month handling — stored month is authoritative', () => {
     it('uses the stored report month before the mark-entry date', () => {
       // Core regression: August marks were entered on 17 September.
@@ -282,7 +310,7 @@ describe('report selectors', { skip }, () => {
       assert.equal(selectors.getAssessmentMonth(assessmentA), 'August');
       assert.equal(selectors.getExamMonthCode(assessmentA), 'Aug');
       assert.equal(selectors.monthlyKey(assessmentA), '2026-08');
-      assert.equal(selectors.reportAcademicYearKey(assessmentA), '2025-2026');
+      assert.equal(selectors.reportAcademicYearKey(assessmentA), '2026-2027');
 
       // Stored month wins even when it conflicts with the date in the other direction.
       assert.equal(selectors.getExamMonth({ month: 'September', date: '2026-08-15' }), 'September');
@@ -499,7 +527,7 @@ describe('report selectors', { skip }, () => {
       assert.equal(pending[0].month, 'August');
       assert.deepEqual(pending[0].missing, ['quiz']);
       assert.equal(
-        selectors.pendingForView(pending, 'monthly', { month: 'Aug', yearKey: '2025-2026' }).length,
+        selectors.pendingForView(pending, 'monthly', { month: 'Aug', yearKey: '2026-2027' }).length,
         1,
       );
       assert.equal(
@@ -563,11 +591,11 @@ describe('report selectors', { skip }, () => {
       const results = [augustRecord, septemberRecord];
 
       assert.deepEqual(
-        selectors.filterByMonth(results, 'Aug', '2025-2026').map(r => r.id),
+        selectors.filterByMonth(results, 'Aug', '2026-2027').map(r => r.id),
         ['res-aug'],
       );
       assert.deepEqual(
-        selectors.filterByMonth(results, 'August', '2025-2026').map(r => r.id),
+        selectors.filterByMonth(results, 'August', '2026-2027').map(r => r.id),
         ['res-aug'],
       );
       assert.deepEqual(
@@ -639,7 +667,7 @@ describe('report selectors', { skip }, () => {
 
       // The pending item appears in its August report view, never the September entry-date view.
       assert.equal(
-        selectors.pendingForView(pendingBefore, 'monthly', { month: 'Aug', yearKey: '2025-2026' }).length,
+        selectors.pendingForView(pendingBefore, 'monthly', { month: 'Aug', yearKey: '2026-2027' }).length,
         1,
       );
       assert.equal(
@@ -691,8 +719,8 @@ describe('report selectors', { skip }, () => {
       const counts = selectors.monthlyMonthCounts(resultsAfterQuiz);
       assert.equal(counts.get('Aug'), 1);
       assert.equal(counts.get('Sep'), undefined);
-      assert.equal(selectors.filterByYear(resultsAfterQuiz, '2025-2026').length, 1);
-      assert.equal(selectors.filterByMonth(resultsAfterQuiz, 'Aug', '2025-2026').length, 1);
+      assert.equal(selectors.filterByYear(resultsAfterQuiz, '2026-2027').length, 1);
+      assert.equal(selectors.filterByMonth(resultsAfterQuiz, 'Aug', '2026-2027').length, 1);
       assert.equal(selectors.filterByMonth(resultsAfterQuiz, 'Sep', '2026-2027').length, 0);
     });
   });
@@ -712,7 +740,7 @@ describe('child month pills', { skip }, () => {
       // August has two subjects published; September has nothing entered at all.
       monthlyResult('a', 'Maths', 80, '2026-08-14', 'Aug'),
       monthlyResult('a', 'English', 62, '2026-08-18', 'Aug'),
-      monthlyResult('a', 'Maths', 74, '2025-10-09', 'Oct'),
+      monthlyResult('a', 'Maths', 74, '2026-10-09', 'Oct'),
       monthlyResult('b', 'Maths', 90, '2026-08-20', 'Aug'),
     ];
 
@@ -720,16 +748,46 @@ describe('child month pills', { skip }, () => {
     const state = label => pills.months.find(m => m.label === label);
 
     assert.deepEqual(pills.months.map(m => m.label), selectors.MONTH_NAMES, 'twelve pills, Jan to Dec');
-    assert.equal(pills.yearKey, '2025-2026', 'the year of this child’s newest marks');
+    assert.equal(pills.yearKey, '2026-2027', 'the year of this child’s newest marks');
     assert.equal(state('Aug').hasMarks, true);
     assert.equal(state('Aug').count, 2, 'both published subjects, and nothing of child b’s');
-    assert.equal(state('Aug').year, 2026, 'Jan–Aug sit in the academic year’s second year');
+    assert.equal(state('Aug').year, 2026, 'Aug–Dec sit in the academic year’s first year');
     assert.equal(state('Sep').hasMarks, false, 'a month with nothing entered must stay empty');
     assert.equal(state('Oct').hasMarks, true);
-    assert.equal(state('Oct').year, 2025, 'Sep–Dec sit in the academic year’s first year');
+    assert.equal(state('Oct').year, 2026, 'Aug–Dec sit in the academic year’s first year');
     assert.deepEqual(pills.months.filter(m => m.hasMarks).map(m => m.label), ['Aug', 'Oct']);
-    assert.equal(state('Jan').year, 2026);
-    assert.equal(state('Dec').year, 2025);
+    assert.equal(state('Jan').year, 2027, 'Jan–Jul sit in the academic year’s second year');
+    assert.equal(state('Dec').year, 2026);
+  });
+
+  it('shows August and September side by side in the year that starts in August', () => {
+    // The reported case: the school entered the August report late (its last rows
+    // landed in October, after September's), and the app filed August under the
+    // previous academic year, so the 2026-2027 marks view offered September only.
+    const results = [
+      monthlyResult('a', 'English', 98, '2026-10-05', 'August'),
+      monthlyResult('a', 'Maths', 96, '2026-10-05', 'August'),
+      monthlyResult('a', 'English', 98, '2026-10-04', 'September'),
+      monthlyResult('a', 'Maths', 96, '2026-10-04', 'September'),
+      monthlyResult('a', 'Science', 100, '2026-10-04', 'September'),
+    ];
+
+    const pills = selectors.monthPillStates(results, 'a');
+    const state = label => pills.months.find(m => m.label === label);
+
+    assert.equal(pills.yearKey, '2026-2027');
+    assert.equal(state('Aug').hasMarks, true);
+    assert.equal(state('Aug').count, 2);
+    assert.equal(state('Aug').year, 2026);
+    assert.equal(state('Sep').hasMarks, true);
+    assert.equal(state('Sep').count, 3);
+    assert.deepEqual(
+      selectors.filterByMonth(results, 'Aug', '2026-2027').map(r => r.subject).sort(),
+      ['English', 'Maths'],
+    );
+    // September is still the latest report, even though August was entered after it.
+    assert.equal(selectors.latestMonthWithData(results), 'Sep');
+    assert.equal(selectors.latestPeriodSummary(results, 'monthly').month, 'Sep');
   });
 
   it('covers the school year that holds the latest report, not the device clock', () => {

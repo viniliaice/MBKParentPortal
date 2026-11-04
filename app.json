@@ -3,7 +3,7 @@
     "name": "MBK Parent Portal",
     "slug": "MBKParentPortal",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "scheme": "mobile",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -37,6 +37,17 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
+      ],
+      "./plugins/withOptimizedR8",
+      "./plugins/withProductionNativeExclusions",
       "expo-font",
       [
         "expo-notifications",

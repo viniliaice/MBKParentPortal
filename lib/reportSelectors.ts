@@ -111,9 +111,19 @@ export const MONTH_NAMES = [
 ];
 
 /**
- * 12 academic year months starting in September (index 0) through August (index 11).
+ * 0-indexed calendar month the school year starts in: August. The school's
+ * `academic_years` rows run 1 Aug → 31 May (2026/2027 = 2026-08-01 → 2027-05-31),
+ * so August opens a new academic year. Every academic-year boundary below derives
+ * from this one constant: when it said September, August reports were filed under
+ * the previous academic year and vanished from the year the parent was viewing.
+ */
+export const ACADEMIC_YEAR_START_MONTH_INDEX = 7;
+
+/**
+ * 12 academic year months starting in August (index 0) through July (index 11).
  */
 export const ACADEMIC_YEAR_MONTHS = [
+  'Aug',
   'Sep',
   'Oct',
   'Nov',
@@ -125,7 +135,6 @@ export const ACADEMIC_YEAR_MONTHS = [
   'May',
   'Jun',
   'Jul',
-  'Aug',
 ];
 
 /** Parse calendar year and 0-indexed month from a date string safely without timezone drift. */
@@ -158,7 +167,7 @@ export function getCalendarMonthIndex(monthLabel: string | null | undefined): nu
   if (shortIdx >= 0) return shortIdx;
   const acadIdx = ACADEMIC_YEAR_MONTHS.findIndex(m => m.toLowerCase() === clean);
   if (acadIdx >= 0) {
-    return acadIdx < 4 ? acadIdx + 8 : acadIdx - 4;
+    return (acadIdx + ACADEMIC_YEAR_START_MONTH_INDEX) % 12;
   }
   return -1;
 }
@@ -387,7 +396,7 @@ export function academicYearKey(dateStr: string): string {
 }
 
 function academicYearKeyFromParts(parts: { year: number; monthIndex: number }): string {
-  return parts.monthIndex >= 8
+  return parts.monthIndex >= ACADEMIC_YEAR_START_MONTH_INDEX
     ? `${parts.year}-${parts.year + 1}`
     : `${parts.year - 1}-${parts.year}`;
 }
@@ -424,10 +433,10 @@ export function filterByPeriod<T extends ReportResult>(results: T[], period: Rep
   return results.filter(r => r.examType === period);
 }
 
-/** The academic-month label ('Sep'…'Aug') a calendar month index belongs to. */
+/** The academic-month label ('Aug'…'Jul') a calendar month index belongs to. */
 export function academicMonthLabel(calendarMonthIndex: number): string {
   if (calendarMonthIndex < 0 || calendarMonthIndex > 11) return '';
-  return ACADEMIC_YEAR_MONTHS[calendarMonthIndex >= 8 ? calendarMonthIndex - 8 : calendarMonthIndex + 4];
+  return ACADEMIC_YEAR_MONTHS[(calendarMonthIndex - ACADEMIC_YEAR_START_MONTH_INDEX + 12) % 12];
 }
 
 /** How many monthly results each academic report month holds (months with none are omitted). */
@@ -1029,10 +1038,10 @@ export function monthPillStates(
   return {
     yearKey,
     months: MONTH_NAMES.map((label, index) => {
-      // Sep–Dec sit in the academic year's first calendar year, Jan–Aug in its second:
+      // Aug–Dec sit in the academic year's first calendar year, Jan–Jul in its second:
       // the same split `reportAcademicYearKey` applies when it keys a report period.
       const year = Number.isInteger(startYear) && Number.isInteger(endYear)
-        ? (index >= 8 ? startYear : endYear)
+        ? (index >= ACADEMIC_YEAR_START_MONTH_INDEX ? startYear : endYear)
         : null;
       const academicMonth = academicMonthLabel(index);
       const inMonth = yearKey ? filterByMonth(inYear, academicMonth, yearKey) : [];

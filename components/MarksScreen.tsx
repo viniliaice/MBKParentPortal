@@ -104,33 +104,21 @@ export function MarksScreen({ showBack = false }: Props) {
     return current ? current.name.replace('/', '-') : '';
   }, [academicYears]);
 
-  /** The academic years that actually carry results for the period on screen. */
-  const yearsWithPeriodResults = useMemo(() => {
-    const set = new Set<string>();
-    for (const result of childResults) {
-      if (result.examType !== period || !result.date) continue;
-      const key = reportAcademicYearKey(result);
-      if (key) set.add(key);
-    }
-    return set;
-  }, [childResults, period]);
-
   /**
-   * Default to the school's current academic year — but only while it has results for
-   * the period being viewed. A parent who taps "Final" on Home follows a card that
-   * showed a final average, so landing on the current year's empty final (the exam has
-   * not been sat yet) would contradict the screen they came from.
+   * Start in the school's current year, even when that period has no marks yet. Older
+   * years stay available in the year picker; silently jumping back to them would make
+   * last year's report look current when a parent opens Marks from Home.
    */
   useEffect(() => {
-    if (year && yearKeys.includes(year) && (yearsWithPeriodResults.size === 0 || yearsWithPeriodResults.has(year))) return;
+    // Keep a valid selection, including a year the parent explicitly picked with no
+    // results for the currently selected period.
+    if (year && yearKeys.includes(year)) return;
     if (yearKeys.length === 0) { setYear(''); return; }
-    const newestWithResults = Array.from(yearsWithPeriodResults).sort().pop();
-    if (newestWithResults && !yearsWithPeriodResults.has(year)) { setYear(newestWithResults); return; }
     const preferred = currentYearKey && yearKeys.includes(currentYearKey)
       ? currentYearKey
       : yearKeys[yearKeys.length - 1];
     setYear(preferred);
-  }, [year, yearKeys, currentYearKey, yearsWithPeriodResults]);
+  }, [year, yearKeys, currentYearKey]);
 
   const yearResults = useMemo(() => filterByYear(childResults, year), [childResults, year]);
   const periodResults = useMemo(() => filterByPeriod(yearResults, period), [yearResults, period]);
