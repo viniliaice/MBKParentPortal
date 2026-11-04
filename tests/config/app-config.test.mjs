@@ -211,6 +211,18 @@ describe('supabase/config.toml', () => {
 });
 
 describe('google-services.json', () => {
+  // The Firebase/Google project this app belongs to. google-services.json is
+  // git-ignored, so these assertions only run where the file exists (a developer
+  // machine or an EAS builder that received it); scripts/provide-google-services.mjs
+  // enforces the same three values on every EAS build, supplied or not.
+  const EXPECTED_PROJECT_ID = 'mbkconnect';
+  const EXPECTED_STORAGE_BUCKET = 'mbkconnect.firebasestorage.app';
+
+  const packagesIn = contents =>
+    (contents.client ?? [])
+      .map(client => client?.client_info?.android_client_info?.package_name)
+      .filter(Boolean);
+
   it('matches the android package in app.json (skipped when absent)', t => {
     const file = path.join(ROOT, 'google-services.json');
     if (!existsSync(file)) {
@@ -221,9 +233,7 @@ describe('google-services.json', () => {
     // Read only the package names: this file also holds keys, which stay unread
     // and unprinted.
     const contents = JSON.parse(readFileSync(file, 'utf8'));
-    const packages = (contents.client ?? [])
-      .map(client => client?.client_info?.android_client_info?.package_name)
-      .filter(Boolean);
+    const packages = packagesIn(contents);
 
     assert.ok(packages.length > 0, 'the file must declare at least one Android app');
     assert.ok(
@@ -231,6 +241,73 @@ describe('google-services.json', () => {
       `google-services.json declares ${JSON.stringify(packages)} but the app is ${app.android.package}; `
       + 'add an Android app for the new package in Firebase and download the file again, '
       + 'or the Google Services plugin fails the build',
+    );
+  });
+
+  it('belongs to the mbkconnect Firebase project (skipped when absent)', t => {
+    const file = path.join(ROOT, 'google-services.json');
+    if (!existsSync(file)) {
+      t.skip('google-services.json is not on this machine (it is git-ignored)');
+      return;
+    }
+
+    const contents = JSON.parse(readFileSync(file, 'utf8'));
+    assert.equal(
+      contents?.project_info?.project_id,
+      EXPECTED_PROJECT_ID,
+      `google-services.json is from Firebase project "${contents?.project_info?.project_id}" `
+      + `but this app belongs to "${EXPECTED_PROJECT_ID}"; download it from the right project`,
+    );
+  });
+
+  it('points at the mbkconnect storage bucket (skipped when absent)', t => {
+    const file = path.join(ROOT, 'google-services.json');
+    if (!existsSync(file)) {
+      t.skip('google-services.json is not on this machine (it is git-ignored)');
+      return;
+    }
+
+    const contents = JSON.parse(readFileSync(file, 'utf8'));
+    assert.equal(
+      contents?.project_info?.storage_bucket,
+      EXPECTED_STORAGE_BUCKET,
+      `google-services.json points at bucket "${contents?.project_info?.storage_bucket}" `
+      + `but this app belongs to "${EXPECTED_STORAGE_BUCKET}"`,
+    );
+  });
+});
+
+describe('EAS build supplies google-services.json without committing it', () => {
+  // The file is git-ignored, so a build that only works from one developer's
+  // laptop is a trap: remote-triggered builds (dashboard, GitHub) have no local
+  // file. The pre-install hook writes it from the GOOGLE_SERVICES_JSON project
+  // secret instead, then verifies project/package/bucket either way.
+  it('wires the pre-install hook in package.json', () => {
+    const pkg = readJson('package.json');
+    assert.equal(
+      pkg?.scripts?.['eas-build-pre-install'],
+      'node scripts/provide-google-services.mjs',
+      'package.json must run the hook, or EAS builds have no secret fallback',
+    );
+    assert.ok(
+      existsSync(path.join(ROOT, 'scripts', 'provide-google-services.mjs')),
+      'scripts/provide-google-services.mjs must exist',
+    );
+  });
+
+  it('pins the hook to the mbkconnect project', () => {
+    const source = readFileSync(path.join(ROOT, 'scripts', 'provide-google-services.mjs'), 'utf8');
+    assert.match(source, /EXPECTED_PROJECT_ID = 'mbkconnect'/, 'the hook must pin project_id mbkconnect');
+    assert.match(
+      source,
+      /EXPECTED_STORAGE_BUCKET = 'mbkconnect\.firebasestorage\.app'/,
+      'the hook must pin the storage bucket',
+    );
+    assert.match(source, /GOOGLE_SERVICES_JSON/, 'the hook must read the EAS secret');
+    assert.match(
+      source,
+      /expo\?\.android\?\.package/,
+      'the hook must read the package from app.json instead of duplicating it',
     );
   });
 });

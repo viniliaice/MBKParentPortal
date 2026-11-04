@@ -54,7 +54,8 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/**/*.test.mjs",
-    "doctor": "npx expo-doctor"
+    "doctor": "npx expo-doctor",
+    "eas-build-pre-install": "node scripts/provide-google-services.mjs"
   },
   "private": true
 }

@@ -37,8 +37,13 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=<anon/publishable key>
 `.env` is **git-ignored and must stay that way.** Never commit `.env`,
 `google-services.json` or a Firebase admin key; see `docs/security-model.md` §7.
 
-`google-services.json` must exist on disk for Android builds (`app.json` points at
-it) but is not part of the repository.
+`google-services.json` must be available for Android builds (`app.json` points at
+it) but is not part of the repository: either keep the Firebase download at the
+project root when running `eas build` locally, or store it in the
+`GOOGLE_SERVICES_JSON` EAS project secret for remote-triggered builds. It must
+come from Firebase project `mbkconnect` (`project_id = mbkconnect`,
+`storage_bucket = mbkconnect.firebasestorage.app`, package `com.MBKConnect`); the
+pre-install hook verifies this on every build — see `docs/notifications.md` §2b.
 
 ## Scripts
 

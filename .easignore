@@ -66,6 +66,11 @@ google-play-service-account.json
 
 # Android build input: app.json points at it, and the Google Services Gradle plugin
 # fails the build when the package inside disagrees with android.package.
+# This covers `eas build` run from a machine that has the file. Builds triggered
+# elsewhere (dashboard, GitHub) get it from the GOOGLE_SERVICES_JSON project secret
+# instead — scripts/provide-google-services.mjs (eas-build-pre-install) writes that
+# secret to this same path, then verifies project/package/bucket either way.
+# The file must come from Firebase project "mbkconnect" (docs/notifications.md §2b).
 !google-services.json
 
 # EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY are read at build time
