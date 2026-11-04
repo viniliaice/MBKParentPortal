@@ -29,7 +29,9 @@ import type { AppMessage } from '@/data/mockData';
 import {
   REPORT_PERIODS,
   gradeColorFor,
+  filterByYear,
   latestPeriodSummary,
+  pendingForView,
   summariseChild,
   type ReportPeriod,
 } from '@/lib/reportSelectors';
@@ -57,7 +59,7 @@ function greetingFor(date: Date): string {
 export default function HomeScreen() {
   const { user } = useAuth();
   const {
-    students, selectedStudent, results, pendingReports, announcements, messages,
+    students, selectedStudent, results, pendingReports, academicYears, announcements, messages,
     attendance, homework, unreadCount, newAnnouncementsCount, loading, error, refresh,
   } = useApp();
   const c = useColors();
@@ -70,15 +72,33 @@ export default function HomeScreen() {
 
   const child = selectedStudent;
   const childId = child?.id ?? '';
+  const currentYearKey = useMemo(() => {
+    const current = academicYears.find(year => year.isCurrent);
+    return current ? current.name.replace('/', '-') : '';
+  }, [academicYears]);
+
+  // Home is a current-school-year view. Older results remain available in Marks,
+  // where the parent can explicitly choose a year.
+  const currentYearResults = useMemo(
+    () => currentYearKey ? filterByYear(results, currentYearKey) : [],
+    [results, currentYearKey],
+  );
+
+  const currentYearPending = useMemo(
+    () => currentYearKey
+      ? REPORT_PERIODS.flatMap(period => pendingForView(pendingReports, period.key, { yearKey: currentYearKey }))
+      : [],
+    [pendingReports, currentYearKey],
+  );
 
   const academics = useMemo(
-    () => summariseChild(results, pendingReports, childId),
-    [results, pendingReports, childId],
+    () => summariseChild(currentYearResults, currentYearPending, childId),
+    [currentYearResults, currentYearPending, childId],
   );
 
   const childResults = useMemo(
-    () => results.filter(r => r.studentId === childId),
-    [results, childId],
+    () => currentYearResults.filter(r => r.studentId === childId),
+    [currentYearResults, childId],
   );
 
   const periodCards = useMemo(
@@ -184,7 +204,7 @@ export default function HomeScreen() {
 
         {/* Each child card carries its own twelve-month strip: which months of their
             school year have marks published. */}
-        <ChildSelector showMonths recentFirst style={{ paddingBottom: 4 }} />
+        <ChildSelector showMonths recentFirst currentYearOnly visibleCards={3} style={{ paddingBottom: 4 }} />
 
         {error && students.length === 0 ? (
           <View style={{ marginTop: 16 }}>

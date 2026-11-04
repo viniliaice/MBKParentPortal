@@ -12,9 +12,11 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const require = createRequire(import.meta.url);
 const readJson = relative => JSON.parse(readFileSync(path.join(ROOT, relative), 'utf8'));
 
 const app = readJson('app.json').expo;
@@ -23,6 +25,18 @@ const eas = readJson('eas.json');
 describe('app.json', () => {
   it('uses the decided application id', () => {
     assert.equal(app.android.package, 'com.MBKConnect');
+  });
+
+  it('allows Android to use the device orientation and window size', () => {
+    assert.equal(app.orientation, 'default');
+  });
+
+  it('enables R8 minification and resource shrinking for release builds', () => {
+    const buildProperties = app.plugins.find(plugin => Array.isArray(plugin) && plugin[0] === 'expo-build-properties');
+    assert.ok(buildProperties, 'expo-build-properties must be configured');
+    assert.equal(buildProperties[1].android.enableMinifyInReleaseBuilds, true);
+    assert.equal(buildProperties[1].android.enableShrinkResourcesInReleaseBuilds, true);
+    assert.ok(app.plugins.includes('./plugins/withOptimizedR8'), 'use optimized R8 default rules');
   });
 
   it('has an application id that Android and Play accept', () => {
@@ -88,15 +102,42 @@ describe('app.json', () => {
   });
 });
 
+describe('profile-aware Expo config', () => {
+  const dynamicConfig = require(path.join(ROOT, 'app.config.js'));
+  const evaluate = profile => {
+    const previous = process.env.EAS_BUILD_PROFILE;
+    process.env.EAS_BUILD_PROFILE = profile;
+    try {
+      return dynamicConfig({ config: app });
+    } finally {
+      if (previous === undefined) delete process.env.EAS_BUILD_PROFILE;
+      else process.env.EAS_BUILD_PROFILE = previous;
+    }
+  };
+
+  it('omits the development-client config plugin from production only', () => {
+    const production = evaluate('production');
+    const development = evaluate('development');
+    const names = config => config.plugins.map(plugin => Array.isArray(plugin) ? plugin[0] : plugin);
+
+    assert.equal(production.orientation, 'default');
+    assert.ok(!names(production).includes('expo-dev-client'));
+    assert.ok(names(development).includes('expo-dev-client'));
+  });
+});
+
 describe('eas.json', () => {
   it('lets EAS own the version numbers', () => {
     assert.equal(eas.cli.appVersionSource, 'remote');
   });
 
-  it('produces a Play-ready bundle in production, with auto-increment', () => {
+  it('produces a Play-ready bundle in production, with auto-increment and R8 mapping artifact', () => {
     assert.equal(eas.build.production.android.buildType, 'app-bundle');
     assert.equal(eas.build.production.autoIncrement, true);
     assert.equal(eas.build.production.distribution ?? 'store', 'store');
+    assert.deepEqual(eas.build.production.android.buildArtifactPaths, [
+      'android/app/build/outputs/mapping/release/mapping.txt',
+    ]);
   });
 
   it('keeps an installable APK for internal testing', () => {

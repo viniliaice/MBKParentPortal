@@ -16,7 +16,7 @@ import { Avatar } from '@/components/Avatar';
 import { MonthPillRow } from '@/components/MonthPillRow';
 import { useApp } from '@/context/AppContext';
 import { useColors } from '@/hooks/useColors';
-import { monthPillStates, orderStudentsByRecentMarks } from '@/lib/reportSelectors';
+import { filterByYear, monthPillStates, orderStudentsByRecentMarks } from '@/lib/reportSelectors';
 
 /**
  * The root layout centres every screen in a 720pt column, so a wide browser window must
@@ -36,6 +36,10 @@ interface Props {
   showMonths?: boolean;
   /** Leads with the child the school has most recently entered marks for. */
   recentFirst?: boolean;
+  /** Limits month pills to the school's current academic year (used on Home). */
+  currentYearOnly?: boolean;
+  /** Number of child cards to fit across the visible carousel area. */
+  visibleCards?: number;
 }
 
 /**
@@ -46,7 +50,14 @@ interface Props {
  * With a single child it degrades to a plain identity row: still obvious *who* the
  * screen is about, without a control that has nothing to switch to.
  */
-export function ChildSelector({ style, dense, showMonths = false, recentFirst = false }: Props) {
+export function ChildSelector({
+  style,
+  dense,
+  showMonths = false,
+  recentFirst = false,
+  currentYearOnly = false,
+  visibleCards = 1,
+}: Props) {
   const {
     students, selectedStudentId, selectedStudent, setSelectedStudentId,
     results, pendingReports, academicYears,
@@ -65,8 +76,14 @@ export function ChildSelector({ style, dense, showMonths = false, recentFirst = 
   // account never borrow a month from each other.
   const pillsByStudent = useMemo(() => {
     if (!showMonths) return null;
-    return new Map(students.map(s => [s.id, monthPillStates(results, s.id, { fallbackYearKey: currentYearKey })]));
-  }, [showMonths, students, results, currentYearKey]);
+    const resultsForPills = currentYearOnly
+      ? (currentYearKey ? filterByYear(results, currentYearKey) : [])
+      : results;
+    return new Map(students.map(s => [
+      s.id,
+      monthPillStates(resultsForPills, s.id, { fallbackYearKey: currentYearKey }),
+    ]));
+  }, [showMonths, currentYearOnly, students, results, currentYearKey]);
 
   // The card a parent lands on should be the one with something new on it.
   const ordered = useMemo(
@@ -74,7 +91,10 @@ export function ChildSelector({ style, dense, showMonths = false, recentFirst = 
     [recentFirst, students, results, pendingReports],
   );
 
-  const cardWidth = Math.min(windowWidth - SCREEN_GUTTER, CONTENT_MAX_WIDTH - SCREEN_GUTTER);
+  const visibleCount = Math.max(1, Math.min(ordered.length, Math.floor(visibleCards) || 1));
+  const availableWidth = Math.min(windowWidth, CONTENT_MAX_WIDTH) - SCREEN_GUTTER;
+  const cardWidth = Math.max(0, (availableWidth - CARD_GAP * (visibleCount - 1)) / visibleCount);
+  const compactCards = visibleCount > 1;
 
   // The month pills belong to the child whose card they sit on, so the card on screen has
   // to be the child the rest of the screen is showing. The first alignment is instant —
@@ -157,6 +177,7 @@ export function ChildSelector({ style, dense, showMonths = false, recentFirst = 
             key={student.id}
             style={[
               styles.chip,
+              compactCards && styles.compactChip,
               {
                 width: cardWidth,
                 backgroundColor: selected ? c.primarySoft : c.surface,
@@ -165,29 +186,50 @@ export function ChildSelector({ style, dense, showMonths = false, recentFirst = 
             ]}
           >
             <TouchableOpacity
-              style={styles.identity}
+              style={[styles.identity, compactCards && styles.compactIdentity]}
               onPress={() => switchTo(student.id)}
               activeOpacity={0.85}
               accessibilityRole="button"
               accessibilityState={{ selected }}
               accessibilityLabel={`Show ${student.name}, ${student.grade}`}
             >
-              <Avatar name={student.name} color={student.avatarColor} size={30} />
-              <View style={styles.identityText}>
-                <Text
-                  style={[styles.chipName, { color: selected ? c.primary : c.foreground }]}
-                  numberOfLines={1}
-                >
-                  {firstName}
-                </Text>
-                <Text style={[styles.dot, { color: c.textDim }]}>·</Text>
-                {/* The grade, and nothing else: the school's student number is not a
-                    parent-facing detail and only made the card wider and taller. */}
-                <Text style={[styles.chipGrade, { color: c.textSecondary }]} numberOfLines={1}>
-                  {student.grade}
-                </Text>
-              </View>
-              {selected ? <Ionicons name="checkmark-circle" size={16} color={c.primary} /> : null}
+              <Avatar name={student.name} color={student.avatarColor} size={compactCards ? 24 : 30} />
+              {compactCards ? (
+                <View style={styles.compactIdentityText}>
+                  <Text
+                    style={[styles.chipName, styles.compactName, { color: selected ? c.primary : c.foreground }]}
+                    numberOfLines={1}
+                  >
+                    {firstName}
+                  </Text>
+                  <Text style={[styles.chipGrade, styles.compactGrade, { color: c.textSecondary }]} numberOfLines={1}>
+                    {student.grade}
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.identityText}>
+                  <Text
+                    style={[styles.chipName, { color: selected ? c.primary : c.foreground }]}
+                    numberOfLines={1}
+                  >
+                    {firstName}
+                  </Text>
+                  <Text style={[styles.dot, { color: c.textDim }]}>·</Text>
+                  {/* The grade, and nothing else: the school's student number is not a
+                      parent-facing detail and only made the card wider and taller. */}
+                  <Text style={[styles.chipGrade, { color: c.textSecondary }]} numberOfLines={1}>
+                    {student.grade}
+                  </Text>
+                </View>
+              )}
+              {selected ? (
+                <Ionicons
+                  name="checkmark-circle"
+                  size={compactCards ? 13 : 16}
+                  color={c.primary}
+                  style={compactCards ? styles.compactSelected : undefined}
+                />
+              ) : null}
             </TouchableOpacity>
 
             {pills ? (
@@ -213,8 +255,14 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     gap: 6,
   },
+  compactChip: { paddingHorizontal: 6, minHeight: 106 },
   identity: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  compactIdentity: { flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, minHeight: 58, position: 'relative' },
+  compactSelected: { position: 'absolute', top: 0, right: 0 },
   identityText: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  compactIdentityText: { width: '100%', alignItems: 'center' },
+  compactName: { fontSize: 11.5 },
+  compactGrade: { fontSize: 9.5 },
   chipName: { fontSize: 14, fontWeight: '700', flexShrink: 1 },
   chipGrade: { fontSize: 11.5, flexShrink: 0 },
   dot: { fontSize: 11.5 },
