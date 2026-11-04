@@ -19,7 +19,7 @@
 - `app.config.js` and `plugins/withProductionNativeExclusions.js`: retain the development client in development/preview, but in the `production` EAS profile exclude `expo-dev-client`, `expo-dev-launcher`, `expo-dev-menu`, and `expo-dev-menu-interface` from Android autolinking. The production plugin also removes only the development `exp+...` URL scheme, leaving the app's `mobile` scheme intact.
 - `plugins/withOptimizedR8.js`: fail-fast CNG transform replaces the generated non-optimized `proguard-android.txt` default with `proguard-android-optimize.txt`. It refuses to silently continue if the generated template changes unexpectedly.
 - `package.json` / `package-lock.json`: added Expo SDK 54-compatible `expo-build-properties` 1.0.10.
-- `eas.json`: configured the production build to retain `android/app/build/outputs/mapping/release/mapping.txt` as an EAS build artifact. This path is configured, but the file does not exist until a release is actually built.
+- `eas.json` was left unchanged. EAS artifact retention for the R8 mapping file is not configured; access to the mapping file from a future build must be confirmed through the existing build workflow.
 - No application ID, Firebase/Supabase configuration, credentials, authentication, production data, or backend code was changed.
 
 ## 3. DEX / R8 results
@@ -78,13 +78,13 @@ These observations do **not** establish safe RSS, bitmap, foreground/background,
 ## 8. Release files
 
 - Production AAB: **not produced**.
-- R8 mapping file: **not produced**; EAS artifact retention is configured for the next successful production build.
+- R8 mapping file: **not produced**; EAS artifact retention is **not configured** (the existing EAS configuration was left unchanged).
 - Generated CNG source manifest/settings evidence was temporary under `/tmp/mbk-cng-production` and is not a production artifact.
 
 ## 9. Remaining work before Play submission
 
 1. Run the existing EAS `production` profile in an environment with the project's EAS account, remote signing credentials, actual ignored `google-services.json`, and access to EAS build services. The remote auto-increment should advance the remote version code from 8 to 9, but the remote value must be checked before building.
-2. Download and inspect the signed AAB, R8 `mapping.txt`, DEX sizes, R8 outputs, and the **merged release manifest**. Confirm both the main activity and ML Kit scanner activity are unrestricted/absent as appropriate.
+2. Download and inspect the signed AAB, DEX sizes, R8 outputs, the **merged release manifest**, and the R8 `mapping.txt` if the existing build workflow makes it available. Mapping-file artifact retention is not configured in `eas.json`. Confirm both the main activity and ML Kit scanner activity are unrestricted/absent as appropriate.
 3. Test the minified release on Android 13/14/15/16, light/dark appearance, gesture and three-button navigation, keyboard/forms/modals, portrait/landscape, tablets/foldables/resizable windows, and existing app flows.
 4. Scan compiled DEX/native dependencies for remaining deprecated edge-to-edge APIs. The React Native 0.81.5, screens 4.16.0, and keyboard-controller 1.18.5 references documented above remain source-level limitations; a coordinated supported Expo/RN upgrade is needed to remove them, followed by the same full test matrix.
 5. Profile release memory on representative devices and review the actual Android Vitals breakdown; then upload the bundle and verify Play's DEX optimization percentages and remaining warnings in App Bundle Explorer/internal testing.

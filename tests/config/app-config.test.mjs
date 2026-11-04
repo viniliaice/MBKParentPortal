@@ -131,13 +131,11 @@ describe('eas.json', () => {
     assert.equal(eas.cli.appVersionSource, 'remote');
   });
 
-  it('produces a Play-ready bundle in production, with auto-increment and R8 mapping artifact', () => {
+  it('produces a Play-ready bundle in production, with auto-increment and no EAS mapping-retention override', () => {
     assert.equal(eas.build.production.android.buildType, 'app-bundle');
     assert.equal(eas.build.production.autoIncrement, true);
     assert.equal(eas.build.production.distribution ?? 'store', 'store');
-    assert.deepEqual(eas.build.production.android.buildArtifactPaths, [
-      'android/app/build/outputs/mapping/release/mapping.txt',
-    ]);
+    assert.equal(eas.build.production.android.buildArtifactPaths, undefined);
   });
 
   it('keeps an installable APK for internal testing', () => {
